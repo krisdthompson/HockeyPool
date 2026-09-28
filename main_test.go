@@ -62,6 +62,9 @@ func TestDraftFlow(t *testing.T) {
 	if w := do("/api/undo", "{}", false); w.Code != http.StatusUnauthorized {
 		t.Fatalf("no auth: %d", w.Code)
 	}
+	if w := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":7,"snake":true,"budget":0}`, true); w.Code != 200 {
+		t.Fatalf("settings: %d %s", w.Code, w.Body)
+	}
 	if w := do("/api/import", `{"text":"Name,Team\nA,EDM\nB,TOR"}`, true); w.Code != 200 {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}

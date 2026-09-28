@@ -57,6 +57,10 @@ The app runs as one always-on shared-cpu machine with a 1 GB volume. It costs
 cents for a night. Run `fly apps destroy hockeypool-draft` when the pool is
 done.
 
+The site is also served at https://hockeypool.opeongo.net. That DNS name is
+a CNAME to `hockeypool-draft.fly.dev`, and the deploy workflow requests its
+TLS certificate (`fly certs add hockeypool.opeongo.net`).
+
 Or push to GitHub: `.github/workflows/fly-deploy.yml` deploys on every push to
 `main` once the repo has a `FLY_API_TOKEN` secret (`fly tokens create org`).
 It creates the app and volume on the first run. Run the `fly secrets set`

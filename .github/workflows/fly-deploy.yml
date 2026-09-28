@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # Custom domain; its DNS CNAME must point at <app>.fly.dev.
+      CUSTOM_HOST: hockeypool.opeongo.net
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -29,3 +31,8 @@ jobs:
             flyctl volumes create draft_data --app "$app" --region "$region" --size 1 --yes
           fi
       - run: flyctl deploy --remote-only --ha=false
+      - name: TLS certificate for the custom domain
+        run: |
+          app=$(sed -n 's/^app = "\(.*\)"/\1/p' fly.toml)
+          flyctl certs show "$CUSTOM_HOST" --app "$app" >/dev/null 2>&1 || flyctl certs add "$CUSTOM_HOST" --app "$app"
+          flyctl certs show "$CUSTOM_HOST" --app "$app"

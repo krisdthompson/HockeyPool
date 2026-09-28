@@ -62,8 +62,9 @@ type State struct {
 	Me         int      `json:"me"`
 	RosterSize int      `json:"rosterSize"`
 	Snake      bool     `json:"snake"`
-	MaxTeams   int      `json:"maxTeams"` // 0 = no limit; soft cap on distinct NHL teams on my roster
-	Budget     int      `json:"budget"`   // 0 = snake/straight draft; >0 = auction with this much per manager
+	MaxTeams   int      `json:"maxTeams"`   // 0 = no limit; soft cap on distinct NHL teams on my roster
+	Budget     int      `json:"budget"`     // 0 = snake/straight draft; >0 = auction with this much per manager
+	AuctionSet bool     `json:"auctionSet"` // budget was chosen in Setup; don't apply the $100 default again
 	Players    []Player `json:"players"`
 	Picks      []Pick   `json:"picks"`
 }
@@ -85,6 +86,7 @@ func defaultState() State {
 		Managers:   slices.Clone(poolTeams),
 		RosterSize: 7,
 		Snake:      true,
+		Budget:     100,
 		Players:    []Player{},
 		Picks:      []Pick{},
 	}
@@ -483,6 +485,7 @@ func (sv *server) routes() http.Handler {
 			}
 		}
 		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams, s.Budget = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams, req.Budget
+		s.AuctionSet = true
 		return nil
 	}))
 
@@ -596,8 +599,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if s := st.get(); len(s.Picks) == 0 && slices.Equal(s.Managers, placeholderTeams) {
-		if _, err := st.update(func(s *State) error { s.Managers = slices.Clone(poolTeams); return nil }); err != nil {
+	// Bring a draft created by an earlier version up to the pool's setup
+	// (14 teams, $100 auction), as long as no picks have been made.
+	if s := st.get(); len(s.Picks) == 0 && (slices.Equal(s.Managers, placeholderTeams) || s.Budget == 0 && !s.AuctionSet) {
+		if _, err := st.update(func(s *State) error {
+			if slices.Equal(s.Managers, placeholderTeams) {
+				s.Managers = slices.Clone(poolTeams)
+			}
+			if s.Budget == 0 && !s.AuctionSet {
+				s.Budget = 100
+			}
+			s.AuctionSet = true
+			return nil
+		}); err != nil {
 			log.Fatal(err)
 		}
 	}
