@@ -11,7 +11,7 @@ func TestParsePlayersCSVAndTSV(t *testing.T) {
 	csvText := "Player,Tm,Position,GP,Goals,Assists,Rookie,Status\nAlpha One,edm,C,80,40,60,,\nBeta Two,TOR,D,10,2,3,Y,IR\n"
 	tsv := strings.ReplaceAll(csvText, ",", "\t")
 	for name, text := range map[string]string{"csv": csvText, "tsv": tsv} {
-		ps, err := parsePlayers(text)
+		ps, _, err := parsePlayers(text)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -25,7 +25,7 @@ func TestParsePlayersCSVAndTSV(t *testing.T) {
 			t.Errorf("%s: second player %+v", name, ps[1])
 		}
 	}
-	if _, err := parsePlayers("Team,GP\nEDM,3\n"); err == nil {
+	if _, _, err := parsePlayers("Team,GP\nEDM,3\n"); err == nil {
 		t.Error("expected error without a name column")
 	}
 }
@@ -72,7 +72,13 @@ func TestDraftFlow(t *testing.T) {
 		t.Fatalf("double pick allowed: %d", w.Code)
 	}
 	if w := do("/api/import", `{"text":"Name\nC"}`, true); w.Code != 400 {
-		t.Fatalf("import mid-draft allowed: %d", w.Code)
+		t.Fatalf("replace mid-draft allowed: %d", w.Code)
+	}
+	if w := do("/api/import", `{"mode":"merge","text":"Name,Rookie,Proj\na,y,40\nC,,"}`, true); w.Code != 200 {
+		t.Fatalf("merge: %d %s", w.Code, w.Body)
+	}
+	if s := st.get(); len(s.Players) != 3 || !s.Players[0].Rookie || s.Players[0].Proj != 40 || s.Players[0].Team != "EDM" || s.Players[2].ID != 3 {
+		t.Fatalf("merge result %+v", s.Players)
 	}
 	// State survives a reopen.
 	st2, err := openStore(strings.TrimSuffix(st.path, "/state.json"))
@@ -84,5 +90,44 @@ func TestDraftFlow(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 200 {
 		t.Fatalf("healthz behind auth: %d", w.Code)
+	}
+}
+
+func TestAuction(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	h := (&server{st: st}).routes()
+	do := func(path, body string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		return w.Code
+	}
+	do("/api/import", `{"text":"Name\nA\nB\nC\nD"}`)
+	if c := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":2,"budget":10}`); c != 200 {
+		t.Fatal("settings", c)
+	}
+	if c := do("/api/pick", `{"playerId":1,"price":3}`); c != 400 {
+		t.Fatal("auction pick without manager allowed")
+	}
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":10}`); c != 400 {
+		t.Fatal("bid over max allowed (must keep $1 for last slot)")
+	}
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":9}`); c != 200 {
+		t.Fatal("max bid rejected", c)
+	}
+	if c := do("/api/pick", `{"playerId":2,"manager":0,"price":2}`); c != 400 {
+		t.Fatal("overspend allowed")
+	}
+	if c := do("/api/pick", `{"playerId":2,"manager":0,"price":1}`); c != 200 {
+		t.Fatal("last $1 rejected", c)
+	}
+	if c := do("/api/pick", `{"playerId":3,"manager":0,"price":1}`); c != 400 {
+		t.Fatal("roster overflow allowed")
+	}
+}
+
+func TestSeedParses(t *testing.T) {
+	ps, _, err := parsePlayers(seedPlayers)
+	if err != nil || len(ps) < 500 {
+		t.Fatalf("seed: %d players, %v", len(ps), err)
 	}
 }

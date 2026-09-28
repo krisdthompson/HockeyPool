@@ -6,31 +6,38 @@ the same URL, and picks sync every 2 seconds.
 
 ## What it does
 
-- **Import** your player list: paste CSV, or copy cells straight from Google
-  Sheets or Excel. Only `Name` is required. Recognised headers:
+- **Player list**: the organizer's pick sheet (`players/*.xlsx`) is converted
+  by `players/convert.py` into `players/players.csv`, which is built into the
+  app and loaded automatically when the draft has no players. Injury "out
+  until" dates become expected games missed. The season is assumed to open
+  Oct 7 and play 82 games in 186 days. Rookies are hand-flagged in the script
+  as a best guess. To regenerate:
+  `python3 players/convert.py players/<sheet>.xlsx > players/players.csv`.
+- **More lists**: in Setup, **Merge into list** matches players by name and
+  updates only the columns your list has (for example `Name,Proj` or
+  `Name,Rookie`). Players it doesn't know are added. Merging is safe
+  mid-draft. Recognised headers:
   `Name, Team, Pos, GP, G, A, Pts, Proj, Miss, Rookie, Injury, Note`.
-  If `Pts` is blank it uses G + A. If `Proj` is blank it uses the 82-game
-  points pace.
 - **Ranks** available players by a score:
   `Proj × injury × rookie × (1 + stack% × my players on that team) × team-cap`.
-  - Injury: `Miss` (expected games missed) scales by (82 − miss) / 82.
-    Otherwise an `Injury` text of IR, LTIR, Out, Season or Surgery takes the
-    IR discount (default 50%), and anything else, such as DTD, takes the
-    day-to-day discount (default 5%).
-  - Rookie: a 10% risk discount by default. Set it negative to boost rookies.
-  - Stacking: +10% per player you already own from the same NHL team, so the
-    list steers you toward fewer teams. You can also set **Max NHL teams**
-    in Setup: once your roster reaches that many teams, players from any
-    other team are discounted.
-  - You can change all of the weights live with the sliders. They are saved
-    per browser.
-- **Tracks the draft**: snake or straight order, who's on the clock, and how
-  many picks until your turn. A "likely gone" tag marks players in the top N
-  by projection, where N is the number of picks before your turn. There's a
-  board grid, recent picks and undo. Click a player name to edit their
-  injury, rookie flag or note, or to record a pick for any manager out of
-  order.
-- **Backup**: Setup → Download backup (JSON), and restore it later.
+  - Proj: the list's `Proj` if given. Otherwise it's a blend of last
+    season's points and 82-game pace ("Trust 82-game pace", default 50%).
+    Rookies under 40 GP blend toward a baseline (default 30 pts), so a hot
+    9-game cameo doesn't rank as a star.
+  - Injury: `Miss` scales by (82 − miss) / 82. Otherwise IR, Out or Season
+    in the injury text takes the IR discount, and anything else takes the
+    day-to-day discount.
+  - Stacking: +10% per player you already own from that NHL team. The
+    optional **Max NHL teams** discounts players who would add another team.
+  - All weights are sliders, saved per browser.
+- **Draft or auction**: set an **Auction budget** in Setup (for example
+  $100) to record a price with every pick. The page then shows each team's
+  money left and max bid, keeping $1 for every open slot, and rejects
+  overbids. With a budget of 0 it's a snake or straight draft: it shows
+  who's on the clock, how many picks until your turn, and "likely gone"
+  tags.
+- Board grid, recent picks, undo, per-player edits (injury, rookie, note),
+  and a JSON backup and restore.
 
 ## Run locally
 

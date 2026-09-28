@@ -26,6 +26,12 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+// The organizer's list, converted by players/convert.py. Loaded when the
+// state has no players yet.
+//
+//go:embed players/players.csv
+var seedPlayers string
+
 type Player struct {
 	ID     int     `json:"id"`
 	Name   string  `json:"name"`
@@ -46,6 +52,7 @@ type Pick struct {
 	Overall  int       `json:"overall"` // 1-based
 	PlayerID int       `json:"playerId"`
 	Manager  int       `json:"manager"`
+	Price    int       `json:"price,omitempty"` // auction mode only
 	At       time.Time `json:"at"`
 }
 
@@ -56,6 +63,7 @@ type State struct {
 	RosterSize int      `json:"rosterSize"`
 	Snake      bool     `json:"snake"`
 	MaxTeams   int      `json:"maxTeams"` // 0 = no limit; soft cap on distinct NHL teams on my roster
+	Budget     int      `json:"budget"`   // 0 = snake/straight draft; >0 = auction with this much per manager
 	Players    []Player `json:"players"`
 	Picks      []Pick   `json:"picks"`
 }
@@ -66,9 +74,15 @@ type store struct {
 	s    State
 }
 
+// The pool teams on the organizer's sheet, in sheet order.
+var poolTeams = []string{"Toad", "Sniffer", "Schlitter", "Rory", "Hoop", "Billy", "Jimbo", "Dag", "Longarm", "Alden", "Albert", "LayJazz", "Hardy", "Smitty"}
+
+// The placeholder list the first deploy started with.
+var placeholderTeams = []string{"Me", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"}
+
 func defaultState() State {
 	return State{
-		Managers:   []string{"Me", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"},
+		Managers:   slices.Clone(poolTeams),
 		RosterSize: 7,
 		Snake:      true,
 		Players:    []Player{},
@@ -178,10 +192,10 @@ func num(v string) float64 {
 
 // parsePlayers reads CSV or TSV (pasted straight from a spreadsheet) with a
 // header row. Only a name column is required.
-func parsePlayers(text string) ([]Player, error) {
+func parsePlayers(text string) ([]Player, map[string]bool, error) {
 	text = strings.TrimSpace(strings.TrimPrefix(text, "\ufeff"))
 	if text == "" {
-		return nil, errors.New("no player data")
+		return nil, nil, errors.New("no player data")
 	}
 	first, _, _ := strings.Cut(text, "\n")
 	r := csv.NewReader(strings.NewReader(text))
@@ -193,7 +207,7 @@ func parsePlayers(text string) ([]Player, error) {
 	r.TrimLeadingSpace = true
 	rows, err := r.ReadAll()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	col := map[string]int{}
 	for i, h := range rows[0] {
@@ -204,7 +218,7 @@ func parsePlayers(text string) ([]Player, error) {
 		}
 	}
 	if _, ok := col["name"]; !ok {
-		return nil, fmt.Errorf("no name column found in header %q", rows[0])
+		return nil, nil, fmt.Errorf("no name column found in header %q", rows[0])
 	}
 	field := func(row []string, k string) string {
 		i, ok := col[k]
@@ -240,9 +254,93 @@ func parsePlayers(text string) ([]Player, error) {
 		out = append(out, p)
 	}
 	if len(out) == 0 {
-		return nil, errors.New("no player rows found")
+		return nil, nil, errors.New("no player rows found")
 	}
-	return out, nil
+	has := map[string]bool{}
+	for k := range col {
+		has[k] = true
+	}
+	return out, has, nil
+}
+
+func nameKey(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.ReplaceAll(s, ".", ""))), " ")
+}
+
+// mergePlayers updates existing players matched by name (and team, when the
+// new list has one and the name is ambiguous) with only the columns the new
+// list has, and appends players it doesn't know. IDs never change, so picks
+// stay valid.
+func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added int) {
+	byName := map[string][]int{}
+	nextID := 0
+	for i, p := range s.Players {
+		byName[nameKey(p.Name)] = append(byName[nameKey(p.Name)], i)
+		nextID = max(nextID, p.ID)
+	}
+	for _, np := range in {
+		idx := -1
+		for _, i := range byName[nameKey(np.Name)] {
+			if idx == -1 || (has["team"] && s.Players[i].Team == np.Team) {
+				idx = i
+			}
+		}
+		if idx == -1 {
+			nextID++
+			np.ID = nextID
+			s.Players = append(s.Players, np)
+			added++
+			continue
+		}
+		p := &s.Players[idx]
+		if has["team"] && np.Team != "" {
+			p.Team = np.Team
+		}
+		if has["pos"] && np.Pos != "" {
+			p.Pos = np.Pos
+		}
+		if has["gp"] {
+			p.GP = np.GP
+		}
+		if has["g"] {
+			p.G = np.G
+		}
+		if has["a"] {
+			p.A = np.A
+		}
+		if has["pts"] || has["g"] || has["a"] {
+			p.Pts = np.Pts
+		}
+		if has["proj"] {
+			p.Proj = np.Proj
+		}
+		if has["miss"] {
+			p.Miss = np.Miss
+		}
+		if has["rookie"] {
+			p.Rookie = np.Rookie
+		}
+		if has["injury"] {
+			p.Injury = np.Injury
+		}
+		if has["note"] && np.Note != "" {
+			p.Note = np.Note
+		}
+		updated++
+	}
+	return updated, added
+}
+
+// maxBid is the most a manager can bid while keeping $1 for each other open slot.
+func maxBid(s *State, m int) int {
+	spent, n := 0, 0
+	for _, k := range s.Picks {
+		if k.Manager == m {
+			spent += k.Price
+			n++
+		}
+	}
+	return s.Budget - spent - max(0, s.RosterSize-n-1)
 }
 
 type server struct {
@@ -308,15 +406,18 @@ type settingsReq struct {
 	RosterSize int      `json:"rosterSize"`
 	Snake      bool     `json:"snake"`
 	MaxTeams   int      `json:"maxTeams"`
+	Budget     int      `json:"budget"`
 }
 
 type importReq struct {
 	Text string `json:"text"`
+	Mode string `json:"mode"` // "replace" (default) or "merge"
 }
 
 type pickReq struct {
 	PlayerID int  `json:"playerId"`
 	Manager  *int `json:"manager"` // nil = whoever is on the clock
+	Price    int  `json:"price"`
 }
 
 type playerEditReq struct {
@@ -373,20 +474,39 @@ func (sv *server) routes() http.Handler {
 		if req.RosterSize < 1 || req.RosterSize > 40 {
 			return errors.New("roster size must be 1-40")
 		}
+		if req.Budget < 0 {
+			return errors.New("budget can't be negative")
+		}
 		for _, p := range s.Picks {
 			if p.Manager >= len(names) {
 				return errors.New("picks exist for a manager you removed; undo them first")
 			}
 		}
-		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams
+		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams, s.Budget = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams, req.Budget
 		return nil
 	}))
 
 	mux.HandleFunc("POST /api/import", mutate(sv, func(s *State, req importReq) error {
-		if len(s.Picks) > 0 {
-			return errors.New("picks already made; reset the draft before re-importing players")
+		players, has, err := parsePlayers(req.Text)
+		if err != nil {
+			return err
 		}
-		players, err := parsePlayers(req.Text)
+		if req.Mode == "merge" {
+			mergePlayers(s, players, has)
+			return nil
+		}
+		if len(s.Picks) > 0 {
+			return errors.New("picks already made; use Merge, or reset the draft before replacing players")
+		}
+		s.Players = players
+		return nil
+	}))
+
+	mux.HandleFunc("POST /api/reseed", mutate(sv, func(s *State, _ struct{}) error {
+		if len(s.Picks) > 0 {
+			return errors.New("picks already made; reset the draft first")
+		}
+		players, _, err := parsePlayers(seedPlayers)
 		if err != nil {
 			return err
 		}
@@ -414,8 +534,29 @@ func (sv *server) routes() http.Handler {
 				return errors.New("unknown manager")
 			}
 			m = *req.Manager
+		} else if s.Budget > 0 {
+			return errors.New("auction: choose who won the player")
 		}
-		s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: m, At: time.Now()})
+		n := 0
+		for _, k := range s.Picks {
+			if k.Manager == m {
+				n++
+			}
+		}
+		if n >= s.RosterSize {
+			return fmt.Errorf("%s already has %d players", s.Managers[m], n)
+		}
+		price := 0
+		if s.Budget > 0 {
+			price = req.Price
+			if price < 1 {
+				return errors.New("auction: price must be at least $1")
+			}
+			if mb := maxBid(s, m); price > mb {
+				return fmt.Errorf("%s can bid at most $%d", s.Managers[m], mb)
+			}
+		}
+		s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: m, Price: price, At: time.Now()})
 		return nil
 	}))
 
@@ -454,6 +595,21 @@ func main() {
 	st, err := openStore(dir)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if s := st.get(); len(s.Picks) == 0 && slices.Equal(s.Managers, placeholderTeams) {
+		if _, err := st.update(func(s *State) error { s.Managers = slices.Clone(poolTeams); return nil }); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if len(st.get().Players) == 0 {
+		players, _, err := parsePlayers(seedPlayers)
+		if err != nil {
+			log.Fatalf("seed players: %v", err)
+		}
+		if _, err := st.update(func(s *State) error { s.Players = players; return nil }); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("loaded %d players from the organizer's list", len(players))
 	}
 	port := os.Getenv("PORT")
 	if port == "" {

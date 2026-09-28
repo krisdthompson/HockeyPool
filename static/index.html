@@ -116,7 +116,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
           <th class="hide-sm" data-k="g">G</th>
           <th class="hide-sm" data-k="a">A</th>
           <th data-k="pts">Pts</th>
-          <th data-k="proj" title="Projected points (import value, or points pace over 82 games)">Proj</th>
+          <th data-k="proj" title="Projected points: the list's Proj if given, else a blend of last season's points and 82-game pace">Proj</th>
           <th data-k="score" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
           <th></th>
         </tr></thead>
@@ -136,8 +136,10 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 
     <section class="panel weights">
       <h2>Ranking weights</h2>
+      <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
       <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
       <label>Rookie discount % <input type="range" id="w-rookie" min="-20" max="50" step="1"><output></output></label>
+      <label title="Rookies with under 40 GP are projected as a blend of their pace and this baseline">Rookie baseline pts <input type="range" id="w-rbase" min="10" max="70" step="1"><output></output></label>
       <label>Day-to-day discount % <input type="range" id="w-dtd" min="0" max="30" step="1"><output></output></label>
       <label>IR / out discount % <input type="range" id="w-ir" min="0" max="100" step="5"><output></output></label>
       <label>Over team-cap discount % <input type="range" id="w-cap" min="0" max="100" step="5"><output></output></label>
@@ -159,12 +161,13 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 <div id="setup">
   <section class="panel">
     <h2>Pool settings</h2>
-    <p class="muted">One manager per line, <b>in first-round draft order</b>.</p>
+    <p class="muted">Pool teams: one person drafting per line, <b>in first-round draft order</b> (auction: nomination order).</p>
     <textarea id="s-managers" style="min-height:140px;font-family:inherit;font-size:14px"></textarea>
     <div class="row">
       <label>I am <select id="s-me"></select></label>
       <label>Players each <input type="number" id="s-roster" min="1" max="40" style="width:70px"></label>
       <label><input type="checkbox" id="s-snake"> Snake order</label>
+      <label title="Auction mode: each team gets this many dollars and every pick records a price. 0 = normal draft.">Auction budget $ <input type="number" id="s-budget" min="0" style="width:80px"></label>
       <label title="Discount players that would add a new NHL team beyond this many. 0 = off.">Max NHL teams on my roster <input type="number" id="s-maxteams" min="0" max="32" style="width:70px"></label>
     </div>
     <button class="primary" id="s-save">Save settings</button> <span id="s-msg"></span>
@@ -172,13 +175,15 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 
   <section class="panel">
     <h2>Import players</h2>
-    <p class="muted">Paste CSV, or copy the cells straight out of a spreadsheet (tab-separated), with a header row. Only <b>Name</b> is required. Headers it recognises:
+    <p class="muted">The organizer's official list is loaded automatically. To add more (projections, rookie lists, injury updates), paste CSV, or copy the cells straight out of a spreadsheet (tab-separated), with a header row. Only <b>Name</b> is required. Headers it recognises:
       <code>Name, Team, Pos, GP, G, A, Pts, Proj, Miss, Rookie, Injury, Note</code>.
       <b>Proj</b> = projected season points (if blank we use points pace over 82 GP). <b>Miss</b> = expected games missed. <b>Rookie</b> = Y/1/X. <b>Injury</b> = free text like <code>DTD</code>, <code>IR</code>, <code>LTIR</code>, <code>Out</code>.</p>
     <textarea id="s-csv" placeholder="Name,Team,Pos,GP,G,A,Pts,Rookie,Injury&#10;..."></textarea>
     <div class="row">
       <input type="file" id="s-file" accept=".csv,.tsv,.txt">
-      <button class="primary" id="s-import">Import (replaces player list)</button>
+      <button class="primary" id="s-merge" title="Update matching players (by name) with only the columns in this list; add new players. Safe mid-draft.">Merge into list</button>
+      <button id="s-import">Replace whole list</button>
+      <button id="s-reseed" title="Throw away the current list and reload the organizer's official list">Reload official list</button>
       <span id="i-msg"></span>
     </div>
   </section>
@@ -207,6 +212,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     </div>
     <hr style="border:0;border-top:1px solid var(--line)">
     <label>Record as drafted by <select id="e-mgr"></select></label>
+    <label id="e-pricewrap">Price $ <input type="number" id="e-price" min="1"></label>
     <button value="draft" id="e-draft">Record pick</button>
   </form>
 </dialog>
@@ -217,7 +223,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 const $ = s => document.querySelector(s);
 let S = null, sortKey = 'score', sortDir = -1, editId = null;
 
-const W_DEFAULT = { stack: 10, rookie: 10, dtd: 5, ir: 50, cap: 50 };
+const W_DEFAULT = { pace: 50, stack: 10, rookie: 10, rbase: 30, dtd: 5, ir: 50, cap: 50 };
 let W = { ...W_DEFAULT };
 try { Object.assign(W, JSON.parse(localStorage.getItem('pool-weights') || '{}')); } catch {}
 
@@ -245,7 +251,16 @@ function onClock(pick) {
 }
 const totalPicks = () => S.managers.length * S.rosterSize;
 
+const auction = () => S.budget > 0;
+function money(m) {
+  const mine = S.picks.filter(k => k.manager === m);
+  const spent = mine.reduce((t, k) => t + (k.price || 0), 0);
+  const left = S.budget - spent;
+  return { spent, left, n: mine.length, max: mine.length >= S.rosterSize ? 0 : left - Math.max(0, S.rosterSize - mine.length - 1) };
+}
+
 function picksUntilMe() {
+  if (auction()) return null;
   for (let p = S.picks.length; p < totalPicks(); p++) if (onClock(p) === S.me) return p - S.picks.length;
   return null;
 }
@@ -259,8 +274,11 @@ function injuryKind(p) {
 
 function proj(p) {
   if (p.proj > 0) return p.proj;
-  if (p.gp > 0) return p.pts / p.gp * 82;
-  return p.pts;
+  const pace = p.gp > 0 ? p.pts / p.gp * 82 : p.pts;
+  // A rookie's 9-game pace means little: blend toward a baseline until 40 GP.
+  if (p.rookie && p.gp < 40) { const w = p.gp / 40; return w * pace + (1 - w) * W.rbase; }
+  // Pace flatters players who missed games last season; blend it with actual points.
+  return W.pace / 100 * pace + (1 - W.pace / 100) * p.pts;
 }
 
 function analyse() {
@@ -300,9 +318,15 @@ function render() {
   const n = S.picks.length, done = n >= totalPicks();
   const who = done ? null : onClock(n);
   const clock = $('#clock');
-  clock.textContent = done ? 'Draft complete' : `Pick ${n + 1} · Round ${Math.floor(n / S.managers.length) + 1} · On the clock: ${S.managers[who]}`;
+  if (auction()) {
+    const mm = money(S.me);
+    clock.textContent = done ? 'Auction complete' : `Player ${n + 1} of ${totalPicks()} · Nominating: ${S.managers[who]}`;
+    $('#nextme').textContent = `You: $${mm.left} left, max bid $${mm.max}, ${S.rosterSize - mm.n} spots open`;
+  } else {
+    clock.textContent = done ? 'Draft complete' : `Pick ${n + 1} · Round ${Math.floor(n / S.managers.length) + 1} · On the clock: ${S.managers[who]}`;
+    $('#nextme').textContent = done ? '' : A.until === 0 ? "🟢 You're up!" : A.until === null ? 'Your roster is full' : `You pick in ${A.until}`;
+  }
   clock.classList.toggle('me', who === S.me);
-  $('#nextme').textContent = done ? '' : A.until === 0 ? "🟢 You're up!" : A.until === null ? 'Your roster is full' : `You pick in ${A.until}`;
 
   // Team filter options.
   const teams = [...new Set(S.players.map(p => p.team).filter(Boolean))].sort();
@@ -344,7 +368,7 @@ function render() {
       r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
-    const pickInfo = r.pick ? `<span class="muted">#${r.pick.overall} ${esc(S.managers[r.pick.manager])}</span>` :
+    const pickInfo = r.pick ? `<span class="muted">#${r.pick.overall} ${esc(S.managers[r.pick.manager])}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
       `<button class="small primary" data-draft="${r.id}" ${canPick ? '' : 'disabled'}>Draft</button> <button class="small" data-mine="${r.id}" title="Record as my pick" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''}">
       <td>${r.rank ?? ''}</td>
@@ -358,7 +382,7 @@ function render() {
   document.querySelectorAll('#players th').forEach(th => th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.k === sortKey ? (sortDir < 0 ? ' ▼' : ' ▲') : ''));
 
   // My team.
-  $('#mytitle').textContent = `${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})`;
+  $('#mytitle').textContent = `${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})` + (auction() ? ` · $${money(S.me).left} left` : '');
   $('#myteams').innerHTML = [...A.myTeams].sort((a, b) => b[1] - a[1]).map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join('')
     + (S.maxTeams ? `<span class="chip">${A.myTeams.size}/${S.maxTeams} teams</span>` : A.myTeams.size ? `<span class="chip">${A.myTeams.size} teams</span>` : '');
   $('#myroster').innerHTML = A.mine.map(p => `<li>${esc(p.name)} <span class="muted">${esc(p.team)} ${esc(p.pos)} · ${proj(p).toFixed(0)}</span></li>`).join('') || '<li class="muted">No picks yet</li>';
@@ -368,19 +392,21 @@ function render() {
   // Recent picks.
   $('#recent').innerHTML = S.picks.slice().reverse().map(k => {
     const p = A.byId.get(k.playerId);
-    return `<div><b>#${k.overall}</b> ${esc(S.managers[k.manager])}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span></div>`;
+    return `<div><b>#${k.overall}</b> ${esc(S.managers[k.manager])}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span>${k.price ? ` <b>$${k.price}</b>` : ''}</div>`;
   }).join('') || '<div class="muted">None yet</div>';
   $('#undo').disabled = !S.picks.length;
 
   // Board grid: rows = rounds, columns = managers.
   const grid = S.managers.map(() => []);
-  for (const k of S.picks) grid[k.manager]?.push(A.byId.get(k.playerId));
+  for (const k of S.picks) { const p = A.byId.get(k.playerId); if (p) grid[k.manager]?.push({ ...p, price: k.price }); }
   let html = '<tr><th>Rd</th>' + S.managers.map((m, i) => `<th class="${i === S.me ? 'me' : ''}">${esc(m)}</th>`).join('') + '</tr>';
+  if (auction()) html += '<tr><td class="muted">$ left / max</td>' + S.managers.map((m, i) => { const mm = money(i); return `<td class="${i === S.me ? 'me' : ''}">$${mm.left} / $${mm.max}</td>`; }).join('') + '</tr>';
   for (let r = 0; r < S.rosterSize; r++) {
     html += `<tr><td>${r + 1}</td>` + S.managers.map((m, i) => {
       const p = grid[i][r];
       const isNext = !done && who === i && grid[i].length === r;
-      return `<td class="${i === S.me ? 'me' : ''} ${isNext ? 'next' : ''}" title="${esc(p ? p.name + ' ' + p.team : '')}">${p ? esc(p.name.split(' ').slice(-1)[0]) + ` <span class="muted">${esc(p.team)}</span>` : ''}</td>`;
+      const isNextCell = !auction() && isNext;
+      return `<td class="${i === S.me ? 'me' : ''} ${isNextCell ? 'next' : ''}" title="${esc(p ? p.name + ' ' + p.team : '')}">${p ? esc(p.name.split(' ').slice(-1)[0]) + ` <span class="muted">${esc(p.team)}${p.price ? ' $' + p.price : ''}</span>` : ''}</td>`;
     }).join('') + '</tr>';
   }
   $('#boardgrid').innerHTML = html;
@@ -397,6 +423,7 @@ function renderSetup() {
   $('#s-roster').value = S.rosterSize;
   $('#s-snake').checked = S.snake;
   $('#s-maxteams').value = S.maxTeams || 0;
+  $('#s-budget').value = S.budget || 0;
 }
 function fillMe(names, sel) {
   $('#s-me').innerHTML = names.map((m, i) => `<option value="${i}">${i + 1}. ${esc(m)}</option>`).join('');
@@ -408,7 +435,8 @@ $('#s-managers').addEventListener('input', () => fillMe($('#s-managers').value.s
 $('#players').addEventListener('click', async e => {
   const t = e.target;
   try {
-    if (t.dataset.draft) { await api('pick', { playerId: +t.dataset.draft }); toast('Pick recorded'); }
+    if (auction() && (t.dataset.draft || t.dataset.mine)) openEdit(+(t.dataset.draft || t.dataset.mine), t.dataset.mine ? S.me : null);
+    else if (t.dataset.draft) { await api('pick', { playerId: +t.dataset.draft }); toast('Pick recorded'); }
     else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
     else if (t.dataset.edit) openEdit(+t.dataset.edit);
     else if (t.tagName === 'TH' && t.dataset.k) {
@@ -431,7 +459,7 @@ for (const k of Object.keys(W_DEFAULT)) {
   });
 }
 
-function openEdit(id) {
+function openEdit(id, winner) {
   const p = S.players.find(p => p.id === id);
   editId = id;
   $('#e-title').textContent = p.name;
@@ -442,10 +470,15 @@ function openEdit(id) {
   $('#e-note').value = p.note;
   const drafted = S.picks.some(k => k.playerId === id);
   $('#e-mgr').innerHTML = S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
-  if (S.picks.length < totalPicks()) $('#e-mgr').value = onClock(S.picks.length);
+  if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? onClock(S.picks.length);
   $('#e-draft').disabled = drafted || S.picks.length >= totalPicks();
+  $('#e-pricewrap').style.display = auction() ? '' : 'none';
+  $('#e-price').value = '';
   $('#edit').showModal();
+  if (auction() && winner !== undefined) $('#e-price').focus();
 }
+// Enter in the price box records the pick rather than hitting the form's first button (Save).
+$('#e-price').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#edit').close('draft'); } });
 $('#edit').addEventListener('close', async () => {
   const v = $('#edit').returnValue;
   try {
@@ -453,7 +486,7 @@ $('#edit').addEventListener('close', async () => {
       await api('player', { id: editId, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value });
       toast('Player updated');
     } else if (v === 'draft') {
-      await api('pick', { playerId: editId, manager: +$('#e-mgr').value });
+      await api('pick', { playerId: editId, manager: +$('#e-mgr').value, price: +$('#e-price').value || 0 });
       toast('Pick recorded');
     }
   } catch (e) { toast(e.message); }
@@ -474,14 +507,28 @@ $('#s-save').onclick = async () => {
   try {
     await api('settings', {
       managers: $('#s-managers').value.split('\n'), me: +$('#s-me').value,
-      rosterSize: +$('#s-roster').value, snake: $('#s-snake').checked, maxTeams: +$('#s-maxteams').value || 0,
+      rosterSize: +$('#s-roster').value, snake: $('#s-snake').checked, maxTeams: +$('#s-maxteams').value || 0, budget: +$('#s-budget').value || 0,
     });
     setupFilled = -1; renderSetup();
     $('#s-msg').className = 'ok'; $('#s-msg').textContent = 'Saved';
   } catch (e) { $('#s-msg').className = 'err'; $('#s-msg').textContent = e.message; }
 };
 $('#s-file').onchange = async e => { const f = e.target.files[0]; if (f) $('#s-csv').value = await f.text(); };
+$('#s-merge').onclick = async () => {
+  try {
+    const before = S.players.length;
+    const s = await api('import', { text: $('#s-csv').value, mode: 'merge' });
+    $('#i-msg').className = 'ok';
+    $('#i-msg').textContent = `Merged. ${s.players.length - before} new players added; ${s.players.length} total.`;
+  } catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
+};
+$('#s-reseed').onclick = async () => {
+  if (!confirm("Replace the player list with the organizer's official list? Your injury/rookie edits are lost.")) return;
+  try { const s = await api('reseed'); $('#i-msg').className = 'ok'; $('#i-msg').textContent = `Loaded ${s.players.length} players`; }
+  catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
+};
 $('#s-import').onclick = async () => {
+  if (S.players.length && !confirm('Replace the whole player list?')) return;
   try {
     const s = await api('import', { text: $('#s-csv').value });
     $('#i-msg').className = 'ok';
