@@ -103,6 +103,8 @@ expanded panel collapses again.
 - Unticking while the details are still open just undoes the tick. Once
   they're dismissed, unticking asks "Undraft …? Yes, undraft / Cancel"
   below the row first.
+- Best buys holds still while drafted details are being filled in, and
+  updates once owner and amount are saved or the details are dismissed.
 - Nothing jumps: the row you click stays put on screen while the page
   updates, and details fold open below it.
 - Click a name: an editor opens under the row (buyer, price, flag,

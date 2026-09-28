@@ -39,6 +39,18 @@ Feature: The draft board page
     Then that player's row stays exactly where it was on screen
     And the details fold open below it
 
+  Scenario Outline: Best buys waits until the drafted details are done
+    Given "Connor McDavid" is in Best buys
+    When Kris ticks Drafted on "Connor McDavid" in the player list
+    Then Best buys still shows the same players in the same order
+    When Kris <finishes>
+    Then Best buys updates and "Connor McDavid" is no longer in it
+
+    Examples:
+      | finishes                               |
+      | dismisses the details                  |
+      | saves an owner and an amount           |
+
   Scenario: Unticking while the details are open undoes the tick
     When Kris ticks Drafted on "Connor McDavid"
     And Kris unticks him before dismissing the details

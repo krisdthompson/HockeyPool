@@ -424,7 +424,9 @@ function suggest() {
 }
 // Keep what the user is looking at still: remember where one row sits on
 // screen before re-rendering, then scroll so it sits in the same place after.
-let clickAnchor = null, lastWhere = 'players';
+let clickAnchor = null, lastWhere = 'players', recsFrozen = null;
+// Snapshot Best buys as shown, so it doesn't change until the details are done.
+const freezeRecs = () => { if (!recsFrozen) recsFrozen = [...document.querySelectorAll('#recs tr[data-rid]')].map(tr => +tr.dataset.rid.split('-')[1]); };
 function anchorNow() {
   let el = clickAnchor && document.querySelector(`[data-rid="${clickAnchor}"]`);
   if (!el) el = [...document.querySelectorAll('#recs tr[data-rid], #players tr[data-rid]')].find(r => r.getBoundingClientRect().bottom > 60);
@@ -530,9 +532,18 @@ function paint() {
   if (!done && S.you?.admin && !searchQ()) {
     const myMax = auction() ? money(S.me).max : Infinity;
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
-    const best = A.rows.filter(r => pending.get(r.id)?.where === 'recs' || (undraftArm === r.id && r.pick && lastWhere === 'recs'));
-    best.push(...avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5));
-    for (const r of avail) if (r.tag === 'target' && !best.includes(r)) best.push(r);
+    // Hold Best buys still while drafted details are being filled in; update
+    // once they're complete (owner and amount saved) or dismissed.
+    const filling = [...pending.values()].some(pd => !(pd.saved && pd.mgr !== '' && (!auction() || pd.price !== ''))) || undraftArm !== null;
+    let best;
+    if (recsFrozen && filling) {
+      best = recsFrozen.map(id => A.rows.find(r => r.id === id)).filter(Boolean);
+    } else {
+      recsFrozen = null;
+      best = A.rows.filter(r => pending.get(r.id)?.where === 'recs');
+      best.push(...avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5));
+      for (const r of avail) if (r.tag === 'target' && !best.includes(r)) best.push(r);
+    }
     const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
     $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
@@ -708,7 +719,7 @@ $('#board').addEventListener('click', async e => {
   const t = e.target;
   const row = t.closest('tr[data-rid]') || t.closest('tr.editrow')?.previousElementSibling;
   if (row?.dataset?.rid) clickAnchor = row.dataset.rid;
-  if (t.dataset.gone || t.dataset.pencil) lastWhere = whereOf(t);
+  if (t.dataset.gone || t.dataset.pencil) { lastWhere = whereOf(t); freezeRecs(); }
   try {
     if (t.dataset.gone) {
       const id = +t.dataset.gone;
