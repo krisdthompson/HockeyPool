@@ -50,7 +50,7 @@ the same URL, and picks sync every 2 seconds.
   the app.
 - **Tick off drafted players**: each row has a ✓ checkbox. Ticking it
   removes the player from the board without recording a buyer; unticking
-  (with "Show drafted" on) puts him back. **Mine** records your own buys
+  (with "Hide drafted" off) puts him back. **Mine** records your own buys
   with a price, which tracks your budget. A buyer and price for anyone
   else is optional (click the name). Unrecorded prices are assumed to be
   the player's pre-auction value when the app estimates the room's

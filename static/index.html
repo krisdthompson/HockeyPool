@@ -134,7 +134,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
       <label class="admin-only"><input type="checkbox" id="fnoavoid"> Hide avoid</label>
       <label class="admin-only"><input type="checkbox" id="ftarget"> Targets only</label>
       <label><input type="checkbox" id="frookie"> Rookies only</label>
-      <label><input type="checkbox" id="fdrafted"> Show drafted</label>
+      <label><input type="checkbox" id="fhidedrafted" checked> Hide drafted</label>
       <label title="Hide players projecting fewer points. Searching a name ignores this.">Min pts <input type="number" id="fminpts" min="0" max="150" step="5" style="width:64px"></label>
     </div>
     <div class="tablewrap">
@@ -149,8 +149,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
           <th class="hide-sm" data-k="g">G</th>
           <th class="hide-sm" data-k="a">A</th>
           <th data-k="pts">Pts</th>
-          <th data-k="proj" title="Projected points: last season's points/pace (or the list's Proj), blended with ESPN's tier-implied points">Proj</th>
-          <th data-k="score" class="admin-only" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
+          <th data-k="proj" title="The list is ordered best-first for you: Proj adjusted for injuries, rookies and stacking (see the tags). Projected points: last season's points/pace (or the list's Proj), blended with ESPN's tier-implied points">Proj</th>
           <th data-k="val" class="auc admin-only" title="Fair auction price for you right now: the room's remaining money split by points above replacement. Updates after every sale.">Value</th>
           <th data-k="good" class="auc hide-sm admin-only" title="A bargain at or below this">Good ≤</th>
           <th data-k="maxb" class="auc admin-only" title="Walk away above this (value +15%; +30% for your targets), capped at what you can bid">Max</th>
@@ -435,7 +434,7 @@ function render() {
   // Player table.
   const q = searchQ(), fpos = $('#fpos').value, fteam = ft.value;
   let rows = A.rows.filter(r => {
-    if (r.pick && !$('#fdrafted').checked && !q) return false;
+    if (r.pick && $('#fhidedrafted').checked && !q) return false;
     if (q && !matches(r, q)) return false;
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
@@ -479,10 +478,10 @@ function render() {
       <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
       <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
-      <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score admin-only">${r.score.toFixed(1)}</td>
+      <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td>
       ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
       </tr>`;
-  }).join('') || `<tr><td colspan="14" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
+  }).join('') || `<tr><td colspan="13" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
   $('#addplayer').style.display = S.you?.admin && qRaw.length >= 4 && !rows.length ? '' : 'none';
@@ -600,7 +599,7 @@ $('#board').addEventListener('click', async e => {
     }
   } catch (err) { toast(err.message); }
 });
-['#fminpts', '#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fdrafted'].forEach(s => $(s).addEventListener('input', render));
+['#fminpts', '#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fhidedrafted'].forEach(s => $(s).addEventListener('input', render));
 $('#addplayer').onclick = async () => {
   const name = $('#q').value.trim();
   const team = (prompt(`NHL team for ${name} (e.g. CBJ)`) || '').trim();
