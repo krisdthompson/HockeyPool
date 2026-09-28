@@ -235,6 +235,9 @@ func parsePlayers(text string) ([]Player, map[string]bool, error) {
 		if name == "" {
 			continue
 		}
+		if pos := strings.ToUpper(field(row, "pos")); pos == "G" || pos == "GOALIE" {
+			continue // points-only pool: goalies aren't drafted
+		}
 		p := Player{
 			ID:     len(out) + 1,
 			Name:   name,

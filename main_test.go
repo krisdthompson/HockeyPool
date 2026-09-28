@@ -25,6 +25,9 @@ func TestParsePlayersCSVAndTSV(t *testing.T) {
 			t.Errorf("%s: second player %+v", name, ps[1])
 		}
 	}
+	if ps, _, _ := parsePlayers("Name,Pos\nSkater,C\nKeeper,G\n"); len(ps) != 1 || ps[0].Name != "Skater" {
+		t.Errorf("goalie not skipped: %+v", ps)
+	}
 	if _, _, err := parsePlayers("Team,GP\nEDM,3\n"); err == nil {
 		t.Error("expected error without a name column")
 	}
