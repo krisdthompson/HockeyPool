@@ -54,6 +54,10 @@ tr.likelygone td.name a { color: var(--bad); }
 #recs table { font-size: 14px; }
 #recs td { padding: 6px; }
 #recs .why { font-size: 12px; color: var(--muted); }
+.searchbar { position: sticky; top: 0; z-index: 3; background: var(--panel); padding-bottom: 8px; }
+.searchbar input { width: 100%; font-size: 16px; padding: 9px 12px; }
+body.guest .admin-only { display: none !important; }
+.you { font-size: 12px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
 .t-target { background: #c9950033; color: #9a6f00; }
 .t-avoid { background: #b3261e22; color: var(--bad); }
@@ -103,21 +107,25 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
   <span class="muted" id="nextme"></span>
   <nav>
     <button id="tab-board" class="active">Board</button>
-    <button id="tab-setup">Setup</button>
+    <button id="tab-setup" class="admin-only">Setup</button>
+    <span class="muted you" id="you"></span>
   </nav>
 </header>
 
 <main id="board">
   <section class="panel">
-    <div id="recs"></div>
+    <div class="searchbar">
+      <input type="search" id="q" list="qlist" autocomplete="off" placeholder="Search: type a name, team or position (e.g. mcdavid, edm, vgk rw) — press / to jump here">
+      <datalist id="qlist"></datalist>
+    </div>
+    <div id="recs" class="admin-only"></div>
     <div class="filters">
-      <input type="search" id="q" placeholder="Search player or team">
       <select id="fpos"><option value="">All pos</option><option>C</option><option>LW</option><option>RW</option><option>F</option><option>D</option><option>G</option></select>
       <select id="fteam"><option value="">All teams</option></select>
-      <label><input type="checkbox" id="fmyteams"> My teams only</label>
+      <label class="admin-only"><input type="checkbox" id="fmyteams"> My teams only</label>
       <label><input type="checkbox" id="fhealthy"> Hide injured</label>
-      <label><input type="checkbox" id="fnoavoid"> Hide avoid</label>
-      <label><input type="checkbox" id="ftarget"> Targets only</label>
+      <label class="admin-only"><input type="checkbox" id="fnoavoid"> Hide avoid</label>
+      <label class="admin-only"><input type="checkbox" id="ftarget"> Targets only</label>
       <label><input type="checkbox" id="frookie"> Rookies only</label>
       <label><input type="checkbox" id="fdrafted"> Show drafted</label>
       <label title="Hide players projecting fewer points. Searching a name ignores this.">Min pts <input type="number" id="fminpts" min="0" max="150" step="5" style="width:64px"></label>
@@ -125,8 +133,8 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <div class="tablewrap">
       <table id="players">
         <thead><tr>
-          <th title="Tick when a player is drafted by anyone">✓</th>
-          <th data-k="rank">#</th>
+          <th class="admin-only" title="Tick when a player is drafted by anyone">✓</th>
+          <th data-k="rank" class="admin-only">#</th>
           <th class="l" data-k="name">Player</th>
           <th class="l" data-k="team">Team</th>
           <th class="l hide-sm" data-k="pos">Pos</th>
@@ -135,10 +143,10 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
           <th class="hide-sm" data-k="a">A</th>
           <th data-k="pts">Pts</th>
           <th data-k="proj" title="Projected points: last season's points/pace (or the list's Proj), blended with ESPN's tier-implied points">Proj</th>
-          <th data-k="score" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
-          <th data-k="val" class="auc" title="Fair auction price for you right now: the room's remaining money split by points above replacement. Updates after every sale.">Value</th>
-          <th data-k="good" class="auc hide-sm" title="A bargain at or below this">Good ≤</th>
-          <th data-k="maxb" class="auc" title="Walk away above this (value +15%; +30% for your targets), capped at what you can bid">Max</th>
+          <th data-k="score" class="admin-only" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
+          <th data-k="val" class="auc admin-only" title="Fair auction price for you right now: the room's remaining money split by points above replacement. Updates after every sale.">Value</th>
+          <th data-k="good" class="auc hide-sm admin-only" title="A bargain at or below this">Good ≤</th>
+          <th data-k="maxb" class="auc admin-only" title="Walk away above this (value +15%; +30% for your targets), capped at what you can bid">Max</th>
           <th></th>
         </tr></thead>
         <tbody></tbody>
@@ -149,14 +157,14 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
   </section>
 
   <aside class="side">
-    <section class="panel">
+    <section class="panel admin-only">
       <h2 id="mytitle">My team</h2>
       <div class="chips" id="myteams"></div>
       <ol class="roster" id="myroster"></ol>
       <div id="stacknext" class="muted"></div>
     </section>
 
-    <section class="panel weights">
+    <section class="panel weights admin-only">
       <h2>Ranking weights</h2>
       <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
       <label title="Blend ESPN's tier-implied points into the projection. 0 = ignore ESPN, 100 = ESPN only (for players ESPN ranks).">ESPN tier weight % <input type="range" id="w-espn" min="0" max="100" step="5"><output></output></label>
@@ -170,7 +178,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     </section>
 
     <section class="panel">
-      <h2>Recent picks <button class="small" id="undo" style="float:right">Undo last</button></h2>
+      <h2>Recent picks <button class="small admin-only" id="undo" style="float:right">Undo last</button></h2>
       <div class="picks" id="recent"></div>
     </section>
 
@@ -232,6 +240,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <label>Injury status <input type="text" id="e-injury" placeholder="e.g. DTD, IR, LTIR - back Dec"></label>
     <label>Expected games missed (0 = unknown) <input type="number" id="e-miss" min="0" max="82"></label>
     <label>Note <input type="text" id="e-note"></label>
+    <label>Why flagged (only you see this) <input type="text" id="e-why"></label>
     <div class="row">
       <button value="save" class="primary">Save</button>
       <button value="cancel">Cancel</button>
@@ -370,7 +379,19 @@ function analyse() {
   return { rows, mine, myTeams, byId, until, capHit };
 }
 
+const fold = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+let qlistFor = -1;
 function render() {
+  document.body.classList.toggle('guest', !S.you?.admin);
+  if (!S.you?.admin && ['score', 'val', 'good', 'maxb', 'rank'].includes(sortKey)) { sortKey = 'proj'; sortDir = -1; }
+  $('#you').textContent = S.you ? `👤 ${S.you.name}${S.you.admin ? '' : ' (guest)'}` : '';
+  if (qlistFor !== S.players.length) {
+    // Type-ahead suggestions: every player, then team codes.
+    qlistFor = S.players.length;
+    const teams = [...new Set(S.players.map(p => p.team).filter(Boolean))].sort();
+    $('#qlist').innerHTML = S.players.map(p => `<option value="${esc(p.name)}">${esc(p.team)} ${esc(p.pos)}</option>`).join('')
+      + teams.map(t => `<option value="${esc(t)}">team</option>`).join('');
+  }
   if (!S) return;
   const A = analyse();
   const n = S.picks.length, done = n >= totalPicks();
@@ -385,6 +406,7 @@ function render() {
     $('#nextme').textContent = done ? '' : A.until === 0 ? "🟢 You're up!" : A.until === null ? 'Your roster is full' : `You pick in ${A.until}`;
   }
   clock.classList.toggle('me', who === S.me);
+  if (!S.you?.admin) $('#nextme').textContent = '';
 
   // Team filter options.
   const teams = [...new Set(S.players.map(p => p.team).filter(Boolean))].sort();
@@ -395,10 +417,15 @@ function render() {
   }
 
   // Player table.
-  const q = $('#q').value.trim().toLowerCase(), fpos = $('#fpos').value, fteam = ft.value;
+  const q = fold($('#q').value.trim()), fpos = $('#fpos').value, fteam = ft.value;
+  const toks = q.split(/\s+/).filter(Boolean);
   let rows = A.rows.filter(r => {
-    if (r.pick && !$('#fdrafted').checked) return false;
-    if (q && !(r.name.toLowerCase().includes(q) || (r.team || '').toLowerCase() === q)) return false;
+    if (r.pick && !$('#fdrafted').checked && !q) return false;
+    if (toks.length) {
+      // Every word must match the name, the start of the team, or the position.
+      const name = fold(r.name), team = fold(r.team), pos = fold(r.pos).split(/[\/, ]+/);
+      if (!toks.every(t => name.includes(t) || team.startsWith(t) || pos.includes(t) || (t === 'f' && !pos.includes('d')))) return false;
+    }
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
       if (fpos === 'F' ? !/C|LW|RW|F|W/.test(pos) : !pos.split(/[\/, ]+/).includes(fpos)) return false;
@@ -434,15 +461,15 @@ function render() {
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
     const pickInfo = r.pick ? `<span class="muted">${esc(buyer(r.pick))}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
-      `<button class="small primary" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
+      `<button class="small primary admin-only" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
-      <td><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted"></td>
-      <td>${r.rank ?? ''}</td>
-      <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}</td>
+      <td class="admin-only"><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted"></td>
+      <td class="admin-only">${r.rank ?? ''}</td>
+      <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
       <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
-      <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score">${r.score.toFixed(1)}</td>
-      ${auction() ? (r.pick ? '<td class="auc"></td><td class="auc hide-sm"></td><td class="auc"></td>' : `<td class="auc">$${Math.round(r.val)}</td><td class="auc hide-sm good">$${r.good}</td><td class="auc maxb">$${r.maxb}</td>`) : ''}
+      <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score admin-only">${r.score.toFixed(1)}</td>
+      ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
       <td>${pickInfo}</td></tr>`;
   }).join('') || `<tr><td colspan="15" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
@@ -453,7 +480,7 @@ function render() {
   document.querySelectorAll('#players th').forEach(th => th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.k === sortKey ? (sortDir < 0 ? ' ▼' : ' ▲') : ''));
 
   // Best buys: the top of the ranking you can still afford, plus any targets.
-  if (!done) {
+  if (!done && S.you?.admin && !$('#q').value.trim()) {
     const myMax = auction() ? money(S.me).max : Infinity;
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
     const best = avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5);
@@ -530,7 +557,7 @@ $('#board').addEventListener('click', async e => {
     }
     else if (auction() && t.dataset.mine) openEdit(+t.dataset.mine, S.me);
     else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
-    else if (t.dataset.edit) openEdit(+t.dataset.edit);
+    else if (t.dataset.edit && S.you?.admin) openEdit(+t.dataset.edit);
     else if (t.tagName === 'TH' && t.dataset.k) {
       const k = t.dataset.k;
       if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = ['name', 'team', 'pos', 'rank'].includes(k) ? 1 : -1; }
@@ -572,6 +599,7 @@ function openEdit(id, winner) {
   $('#e-injury').value = p.injury;
   $('#e-miss').value = p.miss || 0;
   $('#e-note').value = p.note;
+  $('#e-why').value = p.why || '';
   const drafted = S.picks.some(k => k.playerId === id);
   $('#e-mgr').innerHTML = '<option value="-1">Someone (not recorded)</option>' + S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
   if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? (auction() ? -1 : onClock(S.picks.length));
@@ -588,7 +616,7 @@ $('#edit').addEventListener('close', async () => {
   const v = $('#edit').returnValue;
   try {
     if (v === 'save') {
-      await api('player', { id: editId, tag: $('#e-tag').value, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value });
+      await api('player', { id: editId, tag: $('#e-tag').value, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value, why: $('#e-why').value });
       toast('Player updated');
     } else if (v === 'draft') {
       await api('pick', { playerId: editId, manager: +$('#e-mgr').value, price: +$('#e-price').value || 0 });
@@ -650,6 +678,10 @@ $('#s-reset').onclick = async () => {
   try { await api('reset'); toast('Draft reset'); } catch (e) { toast(e.message); }
 };
 
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); tab('board'); $('#q').focus(); }
+});
+$('#q').addEventListener('keydown', e => { if (e.key === 'Escape') { $('#q').value = ''; render(); } });
 poll();
 setInterval(poll, 2000);
 </script>

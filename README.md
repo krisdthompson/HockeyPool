@@ -67,11 +67,26 @@ the same URL, and picks sync every 2 seconds.
 - Board grid, recent picks, undo, per-player edits (injury, rookie, note),
   and a JSON backup and restore.
 
+## Logins
+
+The browser asks for a username and password.
+
+- **kris** (the admin) sees everything: live recommendations, values, max
+  bids, ★/⚠ flags and their reasons, Setup, and ticking players off.
+- **Any other username** with the guest password gets a read-only board:
+  search, type-ahead and stats, with no recommendations, values or flags.
+  The server doesn't even send guests the admin's flags and reasons.
+
+Passwords live in `fly.toml` only as PBKDF2 hashes (`DRAFT_ADMIN_HASH`,
+`DRAFT_GUEST_HASH`). Make a new one with `go run . hash <password>`. A
+`DRAFT_PASSWORD` fly secret also works for the admin. With nothing
+configured, the site is open and everyone is the admin.
+
 ## Run locally
 
     go run .            # http://localhost:8080, state in ./data/state.json
 
-Set `DRAFT_PASSWORD=...` to require HTTP basic auth (any username).
+With no hashes or `DRAFT_PASSWORD` set, the local site is open.
 
 ## Deploy to fly.io
 

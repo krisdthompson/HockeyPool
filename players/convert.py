@@ -43,7 +43,7 @@ PROJ_OVERRIDES = {
 }
 
 
-# Draft-night guidance: (tag, reason). "target" = want him, "avoid" = don't
+# Draft-night guidance, visible only to the admin: (tag, reason). "target" = want him, "avoid" = don't
 # pay for him, "caution" = fine at a discount, don't pay for last season.
 TAGS = {
     "Mark Stone": ("target", "Always on my team. Missed 22 GP last season; price him for ~70 games"),
@@ -150,7 +150,7 @@ def main(path: str):
     espn = load_espn([{"pos": r[col["POS"]], "pts": r[col["Pts"]]} for r in rows])
     matched = set()
     out = csv.writer(sys.stdout, lineterminator="\n")
-    out.writerow(["Name", "Team", "Pos", "GP", "G", "A", "Pts", "Proj", "Expert", "Miss", "Rookie", "Injury", "Tag", "Note"])
+    out.writerow(["Name", "Team", "Pos", "GP", "G", "A", "Pts", "Proj", "Expert", "Miss", "Rookie", "Injury", "Tag", "Why", "Note"])
     for row in rows:
         name = row[col["PLAYER NAME"]]
         if not name or not row[col["POS"]]:
@@ -168,10 +168,10 @@ def main(path: str):
             matched.add(name_key(name))
         rookie = name in ROOKIES or "ESPN rookie to know" in espn_notes
         tag, why = TAGS.get(name, ("", ""))
-        note = "; ".join(x for x in [why, note] + espn_notes if x)
+        note = "; ".join(x for x in [note] + espn_notes if x)
         stat = lambda k: "" if row[col[k]] is None else row[col[k]]
         out.writerow([name, team, row[col["POS"]], stat("GP"), stat("G"), stat("A"), stat("Pts"),
-                      proj, expert or "", miss or "", "Y" if rookie else "", injury, tag, note])
+                      proj, expert or "", miss or "", "Y" if rookie else "", injury, tag, why, note])
     for k in sorted(set(TAGS) - {str(r[col["PLAYER NAME"]]).strip() for r in rows}):
         print(f"tagged but not on the list: {k}", file=sys.stderr)
     # ESPN-ranked skaters the organizer's list leaves out are still valid
@@ -186,7 +186,7 @@ def main(path: str):
             print(f"skipped from ESPN (projects under {MIN_POINTS}): {e['Name']}", file=sys.stderr)
             continue
         pos = "D" if e["Pos"] == "D" else e["Pos"].split("/")[0].replace("F", "").replace("W", "") or "F"
-        out.writerow([e["Name"], ESPN_TEAMS.get(e["Team"], e["Team"]), pos, "", "", "", "", "", expert or "", "", "", "", "",
+        out.writerow([e["Name"], ESPN_TEAMS.get(e["Team"], e["Team"]), pos, "", "", "", "", "", expert or "", "", "", "", "", "",
                       "; ".join(["Not on the organizer's list"] + espn_notes)])
         print(f"added from ESPN: {e['Name']}", file=sys.stderr)
 

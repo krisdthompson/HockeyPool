@@ -4,8 +4,8 @@
 package main
 
 import (
+	"cmp"
 	"crypto/sha256"
-	"crypto/subtle"
 	"embed"
 	"encoding/csv"
 	"encoding/json"
@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,7 +48,8 @@ type Player struct {
 	Miss   int     `json:"miss"`   // expected games missed to injury; 0 = unknown
 	Rookie bool    `json:"rookie"`
 	Injury string  `json:"injury"` // free text: "", "DTD", "IR", "LTIR - back Dec", ...
-	Tag    string  `json:"tag"`    // "", "target", "avoid" or "caution"
+	Tag    string  `json:"tag"`    // the list's default flag: "", "target", "avoid" or "caution" (admin only)
+	Why    string  `json:"why"`    // reason for the flag (admin only)
 	Note   string  `json:"note"`
 }
 
@@ -72,6 +74,9 @@ type State struct {
 	SeedHash   string   `json:"seedHash"`   // which built-in list the players came from
 	Players    []Player `json:"players"`
 	Picks      []Pick   `json:"picks"`
+
+	Prefs map[string]Prefs `json:"prefs,omitempty"` // per-user team choice and flags
+	You   *user            `json:"you,omitempty"`   // only in responses: who is asking
 }
 
 type store struct {
@@ -124,6 +129,7 @@ func (st *store) update(fn func(s *State) error) (State, error) {
 	next.Players = slices.Clone(st.s.Players)
 	next.Picks = slices.Clone(st.s.Picks)
 	next.Managers = slices.Clone(st.s.Managers)
+	next.Prefs = maps.Clone(st.s.Prefs)
 	if err := fn(&next); err != nil {
 		return st.s, err
 	}
@@ -184,6 +190,7 @@ var headerAliases = map[string]string{
 	"injury": "injury", "inj": "injury", "status": "injury", "injury status": "injury",
 	"note": "note", "notes": "note", "comment": "note",
 	"tag": "tag", "flag": "tag",
+	"why": "why", "reason": "why",
 }
 
 func truthy(v string) bool {
@@ -262,6 +269,7 @@ func parsePlayers(text string) ([]Player, map[string]bool, error) {
 			Injury: field(row, "injury"),
 			Note:   field(row, "note"),
 			Tag:    normTag(field(row, "tag")),
+			Why:    field(row, "why"),
 		}
 		if p.Pts == 0 {
 			p.Pts = p.G + p.A
@@ -344,6 +352,9 @@ func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added in
 		if has["tag"] {
 			p.Tag = np.Tag
 		}
+		if has["why"] {
+			p.Why = np.Why
+		}
 		if has["note"] && np.Note != "" {
 			p.Note = np.Note
 		}
@@ -370,27 +381,11 @@ func maxBid(s *State, m int) int {
 }
 
 type server struct {
-	st       *store
-	password string
-}
-
-func (sv *server) auth(next http.Handler) http.Handler {
-	if sv.password == "" {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		_, pw, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(pw), []byte(sv.password)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="hockeypool"`)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	st        *store
+	adminUser string // lower case
+	adminPW   string // plain password from a secret, optional
+	adminHash string // pbkdf2 hash, optional
+	guestHash string // pbkdf2 hash for guests; empty = no guests
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -401,20 +396,22 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 // mutate decodes the request body into req and applies fn to the state.
-func mutate[T any](sv *server, fn func(s *State, req T) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// Only the admin changes anything.
+func mutate[T any](sv *server, fn func(s *State, req T, u user) error) http.HandlerFunc {
+	return adminOnly(func(w http.ResponseWriter, r *http.Request) {
 		var req T
 		if err := json.NewDecoder(io.LimitReader(r.Body, 8<<20)).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad json: " + err.Error()})
 			return
 		}
-		s, err := sv.st.update(func(s *State) error { return fn(s, req) })
+		u := userOf(r)
+		s, err := sv.st.update(func(s *State) error { return fn(s, req, u) })
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, s)
-	}
+		writeJSON(w, http.StatusOK, view(s, u))
+	})
 }
 
 func isDrafted(s *State, id int) bool {
@@ -461,6 +458,7 @@ func normTag(t string) string {
 
 type playerEditReq struct {
 	Tag    string `json:"tag"`
+	Why    string `json:"why"`
 	ID     int    `json:"id"`
 	Rookie bool   `json:"rookie"`
 	Injury string `json:"injury"`
@@ -480,25 +478,25 @@ func (sv *server) routes() http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		writeJSON(w, http.StatusOK, s)
+		writeJSON(w, http.StatusOK, view(s, userOf(r)))
 	})
 
-	mux.HandleFunc("GET /api/export", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/export", adminOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="draft-%s.json"`, time.Now().Format("20060102-1504")))
 		writeJSON(w, http.StatusOK, sv.st.get())
-	})
+	}))
 
-	mux.HandleFunc("POST /api/restore", mutate(sv, func(s *State, req State) error {
+	mux.HandleFunc("POST /api/restore", mutate(sv, func(s *State, req State, _ user) error {
 		if len(req.Managers) == 0 {
 			return errors.New("backup has no managers")
 		}
 		v := s.Version
 		*s = req
-		s.Version = v
+		s.Version, s.You = v, nil
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/settings", mutate(sv, func(s *State, req settingsReq) error {
+	mux.HandleFunc("POST /api/settings", mutate(sv, func(s *State, req settingsReq, u user) error {
 		var names []string
 		for _, m := range req.Managers {
 			if m = strings.TrimSpace(m); m != "" {
@@ -528,10 +526,11 @@ func (sv *server) routes() http.Handler {
 		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams, s.Budget = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams, req.Budget
 		s.MinBid = req.MinBid
 		s.AuctionSet = true
+		setPrefs(s, u, func(p *Prefs) { p.Me = req.Me })
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/import", mutate(sv, func(s *State, req importReq) error {
+	mux.HandleFunc("POST /api/import", mutate(sv, func(s *State, req importReq, _ user) error {
 		players, has, err := parsePlayers(req.Text)
 		if err != nil {
 			return err
@@ -547,7 +546,7 @@ func (sv *server) routes() http.Handler {
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/reseed", mutate(sv, func(s *State, _ struct{}) error {
+	mux.HandleFunc("POST /api/reseed", mutate(sv, func(s *State, _ struct{}, _ user) error {
 		if len(s.Picks) > 0 {
 			return errors.New("picks already made; reset the draft first")
 		}
@@ -560,7 +559,7 @@ func (sv *server) routes() http.Handler {
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/pick", mutate(sv, func(s *State, req pickReq) error {
+	mux.HandleFunc("POST /api/pick", mutate(sv, func(s *State, req pickReq, _ user) error {
 		if len(s.Picks) >= len(s.Managers)*s.RosterSize {
 			return errors.New("draft is complete")
 		}
@@ -611,7 +610,7 @@ func (sv *server) routes() http.Handler {
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/unpick", mutate(sv, func(s *State, req pickReq) error {
+	mux.HandleFunc("POST /api/unpick", mutate(sv, func(s *State, req pickReq, _ user) error {
 		for i, k := range s.Picks {
 			if k.PlayerID == req.PlayerID {
 				s.Picks = append(s.Picks[:i], s.Picks[i+1:]...)
@@ -624,7 +623,7 @@ func (sv *server) routes() http.Handler {
 		return errors.New("player isn't drafted")
 	}))
 
-	mux.HandleFunc("POST /api/undo", mutate(sv, func(s *State, _ struct{}) error {
+	mux.HandleFunc("POST /api/undo", mutate(sv, func(s *State, _ struct{}, _ user) error {
 		if len(s.Picks) == 0 {
 			return errors.New("nothing to undo")
 		}
@@ -632,17 +631,18 @@ func (sv *server) routes() http.Handler {
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/reset", mutate(sv, func(s *State, _ struct{}) error {
+	mux.HandleFunc("POST /api/reset", mutate(sv, func(s *State, _ struct{}, _ user) error {
 		s.Picks = []Pick{}
 		return nil
 	}))
 
-	mux.HandleFunc("POST /api/player", mutate(sv, func(s *State, req playerEditReq) error {
+	mux.HandleFunc("POST /api/player", mutate(sv, func(s *State, req playerEditReq, u user) error {
 		for i := range s.Players {
 			if s.Players[i].ID == req.ID {
 				p := &s.Players[i]
 				p.Rookie, p.Injury, p.Miss, p.Note = req.Rookie, strings.TrimSpace(req.Injury), req.Miss, strings.TrimSpace(req.Note)
-				p.Tag = normTag(req.Tag)
+				p.Why = strings.TrimSpace(req.Why)
+				setPrefs(s, u, func(pr *Prefs) { pr.Tags[req.ID] = normTag(req.Tag) })
 				return nil
 			}
 		}
@@ -657,6 +657,10 @@ func seedHash() string {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "hash" {
+		fmt.Println(hashPassword(os.Args[2])) // for DRAFT_ADMIN_HASH / DRAFT_GUEST_HASH
+		return
+	}
 	dir := os.Getenv("DATA_DIR")
 	if dir == "" {
 		dir = "data"
@@ -703,7 +707,16 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	sv := &server{st: st, password: os.Getenv("DRAFT_PASSWORD")}
+	sv := &server{
+		st:        st,
+		adminUser: strings.ToLower(cmp.Or(os.Getenv("DRAFT_ADMIN_USER"), "kris")),
+		adminPW:   os.Getenv("DRAFT_PASSWORD"),
+		adminHash: os.Getenv("DRAFT_ADMIN_HASH"),
+		guestHash: os.Getenv("DRAFT_GUEST_HASH"),
+	}
+	if sv.open() {
+		log.Printf("no passwords configured: the site is open to everyone")
+	}
 	log.Printf("hockeypool listening on :%s, state in %s", port, st.path)
 	log.Fatal(http.ListenAndServe(":"+port, sv.routes()))
 }

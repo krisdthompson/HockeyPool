@@ -52,11 +52,11 @@ func TestDraftFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := (&server{st: st, password: "pw"}).routes()
+	h := (&server{st: st, adminUser: "kris", adminPW: "pw"}).routes()
 	do := func(path, body string, auth bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 		if auth {
-			r.SetBasicAuth("", "pw")
+			r.SetBasicAuth("kris", "pw")
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -191,5 +191,48 @@ func TestGoneAndUnpick(t *testing.T) {
 	}
 	if c := do("/api/unpick", `{"playerId":3}`); c != 400 {
 		t.Fatal("unpick of undrafted player allowed")
+	}
+}
+
+func TestLoginsAndPrivacy(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	sv := &server{st: st, adminUser: "kris", adminHash: hashPassword("admin-pw"), guestHash: hashPassword("guest-pw")}
+	h := sv.routes()
+	req := func(method, path, body, name, pw string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.SetBasicAuth(name, pw)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := req("POST", "/api/import", `{"text":"Name,Tag,Why\nA,target,secret plan\nB,,"}`, "Kris", "admin-pw"); w.Code != 200 {
+		t.Fatalf("admin import: %d %s", w.Code, w.Body)
+	}
+	for _, c := range []struct{ name, pw string }{{"kris", "guest-pw"}, {"toad", "admin-pw"}, {"toad", "wrong"}, {"", "guest-pw"}} {
+		if w := req("GET", "/api/state", "", c.name, c.pw); w.Code != 401 {
+			t.Errorf("%s/%s: got %d, want 401", c.name, c.pw, w.Code)
+		}
+	}
+	w := req("GET", "/api/state", "", "toad", "guest-pw")
+	if w.Code != 200 {
+		t.Fatalf("guest state: %d", w.Code)
+	}
+	if b := w.Body.String(); strings.Contains(b, "secret plan") || strings.Contains(b, `"target"`) || !strings.Contains(b, `"admin":false`) {
+		t.Errorf("guest sees private data: %s", b)
+	}
+	if w := req("POST", "/api/pick", `{"playerId":1,"manager":-1}`, "toad", "guest-pw"); w.Code != 403 {
+		t.Errorf("guest pick: %d, want 403", w.Code)
+	}
+	w = req("GET", "/api/state", "", "kris", "admin-pw")
+	if b := w.Body.String(); !strings.Contains(b, "secret plan") || !strings.Contains(b, `"target"`) {
+		t.Errorf("admin lost private data: %s", b)
+	}
+	// The admin can clear a list flag for themselves.
+	req("POST", "/api/player", `{"id":1,"tag":"","why":""}`, "kris", "admin-pw")
+	if b := req("GET", "/api/state", "", "kris", "admin-pw").Body.String(); strings.Contains(b, `"target"`) {
+		t.Errorf("flag not cleared: %s", b)
+	}
+	if !checkHash("x", hashPassword("x")) || checkHash("y", hashPassword("x")) {
+		t.Error("hash round trip")
 	}
 }
