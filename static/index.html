@@ -58,6 +58,11 @@ tr.likelygone td.name a { color: var(--bad); }
 .searchbar input { width: 100%; font-size: 16px; padding: 9px 12px; }
 body.guest .admin-only { display: none !important; }
 .you { font-size: 12px; }
+.mgrlist { padding-left: 28px; margin: 8px 0; }
+.mgrlist li { margin: 4px 0; }
+.mgrlist li > div { display: flex; gap: 6px; align-items: center; }
+.mgrlist input { flex: 1; min-width: 0; max-width: 260px; }
+.mgrlist button { padding: 4px 10px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
 .t-target { background: #c9950033; color: #9a6f00; }
 .t-avoid { background: #b3261e22; color: var(--bad); }
@@ -192,12 +197,13 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 <div id="setup">
   <section class="panel">
     <h2>Pool settings</h2>
-    <p class="muted">Pool teams: one person drafting per line, <b>in first-round draft order</b> (auction: nomination order).</p>
-    <textarea id="s-managers" style="min-height:140px;font-family:inherit;font-size:14px"></textarea>
+    <p class="muted">Pool teams <b>in draft order</b> (auction: nomination order). Use ▲▼ to move a team, then <b>Save settings</b>. Recorded buys stay with their team.</p>
+    <ol id="s-mgrlist" class="mgrlist"></ol>
+    <button id="s-addmgr" class="small">+ Add team</button>
     <div class="row">
       <label>I am <select id="s-me"></select></label>
       <label>Players each <input type="number" id="s-roster" min="1" max="40" style="width:70px"></label>
-      <label><input type="checkbox" id="s-snake"> Snake order</label>
+      <label title="Snake: the order reverses every round (1→14, then 14→1). In an auction this only affects whose turn it is to nominate."><input type="checkbox" id="s-snake"> Snake order (reverses each round)</label>
       <label title="Auction mode: each team gets this many dollars and every pick records a price. 0 = normal draft.">Auction budget $ <input type="number" id="s-budget" min="0" style="width:80px"></label>
       <label>Minimum bid $ <input type="number" id="s-minbid" min="1" style="width:70px"></label>
       <label title="Discount players that would add a new NHL team beyond this many. 0 = off.">Max NHL teams on my roster <input type="number" id="s-maxteams" min="0" max="32" style="width:70px"></label>
@@ -537,19 +543,43 @@ let setupFilled = -1;
 function renderSetup() {
   if (setupFilled === S.version || document.activeElement?.closest('#setup')) return;
   setupFilled = S.version;
-  $('#s-managers').value = S.managers.join('\n');
-  fillMe(S.managers, S.me);
+  mgrs = [...S.managers];
+  meName = S.managers[S.me] ?? '';
+  drawMgrs();
   $('#s-roster').value = S.rosterSize;
   $('#s-snake').checked = S.snake;
   $('#s-maxteams').value = S.maxTeams || 0;
   $('#s-budget').value = S.budget || 0;
   $('#s-minbid').value = S.minBid || 1;
 }
-function fillMe(names, sel) {
-  $('#s-me').innerHTML = names.map((m, i) => `<option value="${i}">${i + 1}. ${esc(m)}</option>`).join('');
-  $('#s-me').value = Math.min(sel, names.length - 1);
+// Editable pool-team list; "I am" follows your team by name as it moves.
+let mgrs = [], meName = '';
+function drawMgrs() {
+  $('#s-mgrlist').innerHTML = mgrs.map((m, i) => `<li><div>
+    <input type="text" value="${esc(m)}" data-mi="${i}">
+    <button type="button" data-up="${i}" ${i ? '' : 'disabled'} title="Move up">▲</button>
+    <button type="button" data-down="${i}" ${i < mgrs.length - 1 ? '' : 'disabled'} title="Move down">▼</button>
+    <button type="button" data-del="${i}" title="Remove">✕</button></div></li>`).join('');
+  $('#s-me').innerHTML = mgrs.map((m, i) => `<option value="${i}">${i + 1}. ${esc(m)}</option>`).join('');
+  const k = mgrs.indexOf(meName);
+  if (k >= 0) $('#s-me').value = k;
 }
-$('#s-managers').addEventListener('input', () => fillMe($('#s-managers').value.split('\n').map(s => s.trim()).filter(Boolean), +$('#s-me').value));
+$('#s-mgrlist').addEventListener('click', e => {
+  const d = e.target.dataset;
+  const swap = (i, j) => { [mgrs[i], mgrs[j]] = [mgrs[j], mgrs[i]]; drawMgrs(); };
+  if (d.up) swap(+d.up, +d.up - 1);
+  else if (d.down) swap(+d.down, +d.down + 1);
+  else if (d.del && confirm(`Remove ${mgrs[+d.del]}?`)) { mgrs.splice(+d.del, 1); drawMgrs(); }
+});
+$('#s-mgrlist').addEventListener('input', e => {
+  const i = e.target.dataset.mi;
+  if (i === undefined) return;
+  if (mgrs[i] === meName) meName = e.target.value;
+  mgrs[i] = e.target.value;
+  $('#s-me').options[i].textContent = `${+i + 1}. ${e.target.value}`;
+});
+$('#s-me').addEventListener('change', () => { meName = mgrs[+$('#s-me').value]; });
+$('#s-addmgr').onclick = () => { mgrs.push(`Team ${mgrs.length + 1}`); drawMgrs(); };
 
 // Events.
 $('#board').addEventListener('click', async e => {
@@ -643,7 +673,7 @@ $('#tab-setup').onclick = () => tab('setup');
 $('#s-save').onclick = async () => {
   try {
     await api('settings', {
-      managers: $('#s-managers').value.split('\n'), me: +$('#s-me').value,
+      managers: mgrs, me: +$('#s-me').value,
       rosterSize: +$('#s-roster').value, snake: $('#s-snake').checked, maxTeams: +$('#s-maxteams').value || 0, budget: +$('#s-budget').value || 0, minBid: +$('#s-minbid').value || 1,
     });
     setupFilled = -1; renderSetup();

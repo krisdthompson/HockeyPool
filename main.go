@@ -518,9 +518,41 @@ func (sv *server) routes() http.Handler {
 		if req.Budget > 0 && max(1, req.MinBid)*req.RosterSize > req.Budget {
 			return errors.New("minimum bid × players each is more than the budget")
 		}
-		for _, p := range s.Picks {
-			if p.Manager >= len(names) {
-				return errors.New("picks exist for a manager you removed; undo them first")
+		// Picks point at teams by position, so follow each team to its new
+		// place when the list is reordered or renamed in place.
+		newIdx := map[string]int{}
+		for i, n := range names {
+			if _, dup := newIdx[strings.ToLower(n)]; dup {
+				return fmt.Errorf("%q is listed twice", n)
+			}
+			newIdx[strings.ToLower(n)] = i
+		}
+		remap := make([]int, len(s.Managers))
+		for i, n := range s.Managers {
+			j, ok := newIdx[strings.ToLower(n)]
+			if !ok {
+				j = len(names) // removed
+				if len(names) == len(s.Managers) {
+					j = i // same size: a rename keeps its position
+				}
+			}
+			remap[i] = j
+		}
+		picks := slices.Clone(s.Picks)
+		for i, p := range picks {
+			if p.Manager == Gone {
+				continue
+			}
+			if remap[p.Manager] >= len(names) {
+				return fmt.Errorf("%s has picks; undo them before removing the team", s.Managers[p.Manager])
+			}
+			picks[i].Manager = remap[p.Manager]
+		}
+		s.Picks = picks
+		for name, pr := range s.Prefs {
+			if pr.Me >= 0 && pr.Me < len(remap) && name != u.Name {
+				pr.Me = remap[pr.Me]
+				s.Prefs[name] = pr
 			}
 		}
 		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams, s.Budget = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams, req.Budget

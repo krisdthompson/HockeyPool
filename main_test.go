@@ -236,3 +236,26 @@ func TestLoginsAndPrivacy(t *testing.T) {
 		t.Error("hash round trip")
 	}
 }
+
+func TestReorderKeepsPicks(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	h := (&server{st: st}).routes()
+	do := func(path, body string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		return w.Code
+	}
+	do("/api/import", `{"text":"Name\nA\nB"}`)
+	do("/api/settings", `{"managers":["x","y","z"],"me":0,"rosterSize":7,"budget":100,"minBid":4}`)
+	do("/api/pick", `{"playerId":1,"manager":2,"price":10}`) // z buys A
+	if c := do("/api/settings", `{"managers":["z","x","y"],"me":1,"rosterSize":7,"budget":100,"minBid":4}`); c != 200 {
+		t.Fatal("reorder", c)
+	}
+	s := st.get()
+	if s.Managers[s.Picks[0].Manager] != "z" {
+		t.Fatalf("pick moved to %s", s.Managers[s.Picks[0].Manager])
+	}
+	if c := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":7,"budget":100,"minBid":4}`); c != 400 {
+		t.Fatal("removing a team with picks allowed")
+	}
+}
