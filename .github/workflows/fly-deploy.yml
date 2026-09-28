@@ -1,26 +1,47 @@
-# Deploys to fly.io on every push to main. Needs a FLY_API_TOKEN repo secret
-# (`fly tokens create org`). Creates the app and its volume on first run.
+# Tests, then deploys to fly.io on every push to main. Needs a FLY_API_TOKEN
+# repo secret (`fly tokens create org`). Creates the app and its volume on
+# first run.
 name: Deploy to fly.io
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
-concurrency: fly-deploy
+concurrency: fly-deploy-${{ github.ref }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Go tests and API Gherkin scenarios
+        run: go vet ./... && go test ./...
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui-tests/package-lock.json
+      - name: Browser Gherkin scenarios (@ui) at 375, 768 and 1280 px
+        working-directory: ui-tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+
   deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       # Custom domain; its DNS CNAME must point at <app>.fly.dev.
       CUSTOM_HOST: hockeypool.opeongo.net
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-      - run: go test ./...
+      - uses: actions/checkout@v6
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Create app and volume if missing
         run: |

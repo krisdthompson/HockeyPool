@@ -2,8 +2,8 @@
 Feature: The draft board page
   One column, no modals: every action expands in place next to where it
   was clicked, and every expanded panel can be collapsed again.
-  (Checked in a real browser at 375, 768 and 1280 px wide; not part of
-  `go test`.)
+  (Run in a real browser at 375, 768 and 1280 px wide by ui-tests/;
+  not part of `go test`.)
 
   Background:
     Given Kris is signed in on the board
@@ -87,6 +87,23 @@ Feature: The draft board page
     When Kris unticks him again and presses "Yes, undraft"
     Then he is back on the board
 
+  Scenario: Hide drafted can be turned off to see drafted players
+    Given "Connor McDavid" is drafted
+    When Kris turns off "Hide drafted"
+    Then "Connor McDavid" is in the list with his Drafted box ticked
+
+  Scenario: Buying a player with Mine
+    When Kris presses Mine on the top player in Best buys
+    Then an editor opens under that player with Kris's team as owner and the cursor in Amount
+    When Kris types an amount of $30 and presses Enter
+    Then the buy is recorded for Kris's team at $30
+    And Kris's team shows 1 of 7 players and $70 left
+
+  Scenario: The player editor saves as you go
+    When Kris clicks "Mark Stone"
+    And Kris sets his injury to "DTD" in the editor
+    Then the injury is saved without pressing a save button
+
   Scenario: Clicking a name opens an editor under the row, and closes it again
     When Kris clicks "Mark Stone"
     Then an editor opens directly under his row
@@ -106,3 +123,31 @@ Feature: The draft board page
   Scenario: There are no modals anywhere
     Then the page has no dialog elements
     And nothing calls confirm, prompt or alert
+
+  Scenario: Search needs two letters
+    When Kris types "s" in the search box
+    Then the list is not filtered and no suggestions are offered
+    When Kris types "sto" in the search box
+    Then the list shows "Mark Stone"
+    And the suggestions include "Stone"
+
+  Scenario: Search by team
+    When Kris types "vgk" in the search box
+    Then every player listed plays for "VGK"
+
+  Scenario: Reordering pool teams in Setup keeps buys with their team
+    Given "Connor McDavid" was drafted by "Sniffer" for $58
+    When Kris moves "Sniffer" to the top of the pool teams and saves
+    Then the pool teams start with "Sniffer"
+    And "Connor McDavid" is still owned by "Sniffer"
+
+  Scenario: Removing a pool team confirms in place
+    When Kris presses remove next to "Smitty" in Setup
+    Then "Remove Smitty?" appears beside it with Yes and Cancel
+    When Kris presses Cancel
+    Then "Smitty" is still listed
+
+  Scenario: Setup lists the automatic backups
+    Given "Connor McDavid" is drafted
+    When Kris opens Setup
+    Then the most recent automatic backups are listed for download

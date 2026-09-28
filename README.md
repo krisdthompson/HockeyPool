@@ -107,21 +107,37 @@ expanded panel collapses again.
   updates once owner and amount are saved or the details are dismissed.
 - Nothing jumps: the row you click stays put on screen while the page
   updates, and details fold open below it.
-- Click a name: an editor opens under the row (buyer, price, flag,
-  injury, notes). Click the name again, press Close, or press Esc to
-  close it.
+- Click a name: an editor opens under the row (owner, amount, flag,
+  injury, notes). Everything saves as you go; a new buy is recorded once
+  it has an owner and an amount. Click the name again, press Close, or
+  press Esc to close it.
 - Destructive Setup actions show an inline "Yes / Cancel".
 - Live updates wait while you're typing in an inline panel, so nothing
   you've typed gets wiped.
 
 ## Behaviour specs (Gherkin)
 
-`features/*.feature` describe the behaviour in Gherkin. `bdd_test.go` runs
-them with [godog](https://github.com/cucumber/godog) as part of
-`go test ./...`; use `go test -run TestFeatures -v` to see each scenario.
-Scenarios tagged `@ui` (`features/board-ui.feature`) describe the page
-and are checked in a headless browser at 375, 768 and 1280 px, not in
-`go test`.
+`features/*.feature` describe the behaviour in Gherkin, and all of them run:
+
+- **API and server** (`login`, `privacy`, `drafting`): `bdd_test.go` runs
+  these with [godog](https://github.com/cucumber/godog) inside
+  `go test ./...`. Use `go test -run TestFeatures -v` to see each scenario.
+- **Browser** (scenarios tagged `@ui`: `board-ui`, `site-ui`):
+  `ui-tests/` runs them with cucumber-js and Playwright (Chromium)
+  against a fresh build of the server, at 375, 768 and 1280 px wide.
+
+      cd ui-tests && npm ci && npx playwright install chromium && npm test
+      WIDTHS=375 npm test    # one width only
+
+GitHub Actions runs both suites on every push and pull request, and
+deploys only when they pass.
+
+## Backups
+
+Besides **Setup → Download backup**, the server writes a snapshot of the
+draft after every change to `/data/backups/` on the fly volume, keeping
+the latest 200. Setup lists the most recent ones as download links. To
+restore one, use **Setup → Restore backup**.
 
 ## Run locally
 

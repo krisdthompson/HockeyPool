@@ -54,3 +54,7 @@ Feature: Tracking the auction
     Given Kris recorded "Jack Eichel" as bought by "Toad" for $30
     When Kris reorders the pool teams to "Kris, Toad, Sniffer"
     Then "Jack Eichel" is drafted by "Toad" for $30
+
+  Scenario: Every change is backed up automatically
+    When Kris marks "Mark Stone" as drafted
+    Then a backup of the draft including "Mark Stone" can be downloaded

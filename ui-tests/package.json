@@ -1,0 +1,13 @@
+{
+  "name": "hockeypool-ui-tests",
+  "private": true,
+  "type": "module",
+  "description": "Runs the @ui Gherkin scenarios in ../features against a real build of the server, in Chromium, at phone, tablet and desktop widths.",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.2.1",
+    "playwright": "1.56.1"
+  }
+}

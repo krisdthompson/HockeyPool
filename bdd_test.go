@@ -401,6 +401,25 @@ func initScenario(sc *godog.ScenarioContext) {
 		}
 		return err
 	})
+	sc.Step(`^a backup of the draft including "([^"]*)" can be downloaded$`, func(name string) error {
+		var list struct{ Backups []string }
+		if err := json.Unmarshal(w.do("GET", "/api/backups", "", nil).Body.Bytes(), &list); err != nil || len(list.Backups) == 0 {
+			return fmt.Errorf("no backups listed (%v)", err)
+		}
+		rec := w.do("GET", "/api/backups/"+list.Backups[0], "", nil)
+		var s State
+		if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+			return fmt.Errorf("backup %s: %v", list.Backups[0], err)
+		}
+		id, _ := w.playerID(name)
+		if !slices.ContainsFunc(s.Picks, func(k Pick) bool { return k.PlayerID == id }) {
+			return fmt.Errorf("latest backup doesn't include %s", name)
+		}
+		if w.do("GET", "/api/backups/..%2Fstate.json", "", nil).Code != http.StatusNotFound {
+			return fmt.Errorf("backup download isn't limited to backup files")
+		}
+		return nil
+	})
 	sc.Step(`^the request is refused with "([^"]*)"$`, func(text string) error {
 		if w.last.Code != http.StatusBadRequest || !strings.Contains(w.last.Body.String(), text) {
 			return fmt.Errorf("HTTP %d: %s", w.last.Code, w.last.Body)

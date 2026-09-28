@@ -85,6 +85,44 @@ type store struct {
 	s    State
 }
 
+const keepBackups = 200
+
+// backupDir holds a snapshot of the draft after every change.
+func (st *store) backupDir() string { return filepath.Join(filepath.Dir(st.path), "backups") }
+
+// backup writes a snapshot and trims old ones. A failed backup never fails
+// the change itself; it is only logged.
+func (st *store) backup(b []byte, version int) {
+	dir := st.backupDir()
+	name := fmt.Sprintf("draft-%s-v%06d.json", time.Now().UTC().Format("20060102-150405"), version)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("backup: %v", err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+		log.Printf("backup: %v", err)
+		return
+	}
+	names := st.backups()
+	for _, old := range names[min(len(names), keepBackups):] {
+		os.Remove(filepath.Join(dir, old))
+	}
+}
+
+// backups lists snapshot file names, newest first.
+func (st *store) backups() []string {
+	entries, _ := os.ReadDir(st.backupDir())
+	var names []string
+	for _, e := range entries {
+		if n := e.Name(); strings.HasPrefix(n, "draft-") && strings.HasSuffix(n, ".json") {
+			names = append(names, n)
+		}
+	}
+	slices.Sort(names)
+	slices.Reverse(names)
+	return names
+}
+
 // The pool teams on the organizer's sheet, in sheet order.
 var poolTeams = []string{"Toad", "Sniffer", "Schlitter", "Rory", "Hoop", "Billy", "Jimbo", "Dag", "Longarm", "Alden", "Albert", "LayJazz", "Hardy", "Smitty"}
 
@@ -152,6 +190,7 @@ func (st *store) update(fn func(s *State) error) (State, error) {
 	if err := os.Rename(tmp, st.path); err != nil {
 		return st.s, err
 	}
+	st.backup(b, next.Version)
 	st.s = next
 	return next, nil
 }
@@ -512,6 +551,20 @@ func (sv *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/export", adminOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="draft-%s.json"`, time.Now().Format("20060102-1504")))
 		writeJSON(w, http.StatusOK, sv.st.get())
+	}))
+
+	mux.HandleFunc("GET /api/backups", adminOnly(func(w http.ResponseWriter, r *http.Request) {
+		names := sv.st.backups()
+		writeJSON(w, http.StatusOK, map[string]any{"backups": names[:min(len(names), 20)], "total": len(names)})
+	}))
+	mux.HandleFunc("GET /api/backups/{name}", adminOnly(func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if !slices.Contains(sv.st.backups(), name) {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		http.ServeFile(w, r, filepath.Join(sv.st.backupDir(), name))
 	}))
 
 	mux.HandleFunc("POST /api/restore", mutate(sv, func(s *State, req State, _ user) error {

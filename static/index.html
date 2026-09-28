@@ -257,6 +257,8 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
   <section class="panel">
     <h2>Backup and reset</h2>
+    <p class="muted">The server also saves a snapshot after every change (the latest 200 are kept). Most recent:</p>
+    <ul id="s-backups" class="muted" style="font-size:13px;margin:4px 0 10px"></ul>
     <div class="row">
       <a href="api/export"><button>Download backup (JSON)</button></a>
       <label>Restore backup <input type="file" id="s-restore" accept=".json"></label>
@@ -475,7 +477,7 @@ function paint() {
   // Player table.
   const q = searchQ(), fpos = $('#fpos').value, fteam = ft.value;
   let rows = A.rows.filter(r => {
-    if (r.pick && $('#fhidedrafted').checked && !q && !pending.has(r.id) && undraftArm !== r.id) return false;
+    if (r.pick && $('#fhidedrafted').checked && !q && !pending.has(r.id) && undraftArm !== r.id && ed?.id !== r.id) return false;
     if (q && !matches(r, q)) return false;
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
@@ -519,7 +521,7 @@ function paint() {
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
       <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td>
       ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
-      </tr>${undraftRow(r, 13)}${pendingRow(r, 13, 'players')}${editorRow(r, 13)}`;
+      </tr>${undraftRow(r, 13)}${pendingRow(r, 13, 'players')}${editorRow(r, 13, 'players')}`;
   }).join('') || `<tr><td colspan="13" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
@@ -534,7 +536,7 @@ function paint() {
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
     // Hold Best buys still while drafted details are being filled in; update
     // once they're complete (owner and amount saved) or dismissed.
-    const filling = [...pending.values()].some(pd => !(pd.saved && pd.mgr !== '' && (!auction() || pd.price !== ''))) || undraftArm !== null;
+    const filling = [...pending.values()].some(pd => !(pd.saved && pd.mgr !== '' && (!auction() || pd.price !== ''))) || undraftArm !== null || ed !== null;
     let best;
     if (recsFrozen && filling) {
       best = recsFrozen.map(id => A.rows.find(r => r.id === id)).filter(Boolean);
@@ -552,7 +554,7 @@ function paint() {
         <td class="l name">${nameLink(r)} <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
         <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
         ${auction() && !r.pick ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb" title="Max bid"><span class="hide-sm">max </span>≤$${r.maxb}</td>` : '<td colspan="3"></td>'}
-        </tr>${undraftRow(r, 6)}${pendingRow(r, 6, 'recs')}${editorRow(r, 6)}`).join('')}</tbody></table></div>`;
+        </tr>${undraftRow(r, 6)}${pendingRow(r, 6, 'recs')}${editorRow(r, 6, 'recs')}`).join('')}</tbody></table></div>`;
   } else $('#recs').innerHTML = '';
 
   // My team.
@@ -633,19 +635,19 @@ function pendingBox(r, where) {
 function nameLink(r) {
   if (!S.you?.admin) return `<b>${esc(r.name)}</b>`;
   const open = ed?.id === r.id;
-  return `<a data-edit="${r.id}" role="button" tabindex="0" aria-expanded="${open}" aria-controls="ed-${r.id}">${esc(r.name)}</a>`;
+  return `<a data-edit="${r.id}" role="button" tabindex="0" aria-expanded="${open}">${esc(r.name)}</a>`;
 }
 
 // The player editor opens as a row directly under the player (no modal).
-function editorRow(r, cols) {
-  if (!S.you?.admin || ed?.id !== r.id) return '';
+function editorRow(r, cols, where) {
+  if (!S.you?.admin || ed?.id !== r.id || ed.where !== where) return '';
   const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
-  return `<tr class="editrow"><td colspan="${cols}"><div class="editor" id="ed-${r.id}">
+  return `<tr class="editrow"><td colspan="${cols}"><div class="editor" data-ed="${r.id}">
     ${auction() && !r.pick ? `<div class="val">Value $${Math.round(r.val)} · good buy ≤ $${r.good} · max $${r.maxb}</div>` : ''}
     <div class="edline">
       <label>Owner <select data-f="mgr">${opt(-1, 'Not recorded', ed.mgr)}${S.managers.map((m, i) => opt(i, esc(m), ed.mgr)).join('')}</select></label>
       ${auction() ? `<label>Amount $ <input type="number" data-f="price" min="0" style="width:80px" value="${esc(ed.price)}"></label>` : ''}
-      <button class="primary" data-act="savepick">${r.pick ? 'Update pick' : 'Record pick'}</button>
+      <span class="muted" aria-live="polite">${ed.msg || 'saves as you go'}</span>
     </div>
     <div class="edline">
       <label>Flag <select data-f="tag">${opt('', 'None', ed.tag)}${opt('target', '★ Target', ed.tag)}${opt('avoid', '⚠ Avoid', ed.tag)}${opt('caution', 'Caution', ed.tag)}</select></label>
@@ -657,22 +659,40 @@ function editorRow(r, cols) {
       <label>Note <input type="text" data-f="note" value="${esc(ed.note)}"></label>
       <label>Why flagged (only you) <input type="text" data-f="why" value="${esc(ed.why)}"></label>
     </div>
-    <div class="edline"><button class="primary" data-act="saveplayer">Save player</button><button data-act="close">Close</button></div>
+    <div class="edline"><button data-act="close">Close</button></div>
   </div></td></tr>`;
 }
 
-function openEditor(id, mgr) {
+function openEditor(id, mgr, where) {
   const p = S.players.find(p => p.id === id), pick = S.picks.find(k => k.playerId === id);
-  ed = { id, mgr: mgr ?? (pick ? pick.manager : -1), price: pick?.price || '', tag: p.tag || '', rookie: p.rookie,
-    injury: p.injury || '', miss: p.miss || 0, note: p.note || '', why: p.why || '' };
-  focusNext = mgr !== undefined && auction() ? `#ed-${id} [data-f=price]` : `#ed-${id} [data-f=mgr]`;
+  ed = { id, where, mgr: mgr ?? (pick ? pick.manager : -1), price: pick?.price || '', tag: p.tag || '', rookie: p.rookie,
+    injury: p.injury || '', miss: p.miss || 0, note: p.note || '', why: p.why || '', msg: '' };
+  focusNext = `#${where} [data-ed="${id}"] [data-f=${mgr !== undefined && auction() ? 'price' : 'mgr'}]`;
   render();
+}
+
+// Everything in the editor saves itself. Owner/Amount record or update the
+// pick (a new buy waits until it has an owner, and an amount in an auction).
+async function saveEditor(f) {
+  const id = ed.id, picked = S.picks.some(k => k.playerId === id);
+  try {
+    if (f === 'mgr' || f === 'price') {
+      const m = +ed.mgr, price = +ed.price || 0;
+      if (picked) await api('repick', { playerId: id, manager: m, price });
+      else if (m < 0 || (auction() && !price)) { ed.msg = m < 0 ? 'choose an owner' : 'enter the amount to record the buy'; render(); return; }
+      else await api('pick', { playerId: id, manager: m, price });
+    } else {
+      await api('player', { id, tag: ed.tag, rookie: ed.rookie, injury: ed.injury, miss: +ed.miss || 0, note: ed.note, why: ed.why });
+    }
+    if (ed?.id === id) { ed.msg = '✓ saved'; render(); }
+  } catch (err) { if (ed) { ed.msg = err.message; render(); } toast(err.message); }
 }
 
 let setupFilled = -1;
 function renderSetup() {
   if (setupFilled === S.version || document.activeElement?.closest('#setup')) return;
   setupFilled = S.version;
+  if ($('#setup').style.display === 'block') listBackups();
   mgrs = [...S.managers];
   meName = S.managers[S.me] ?? '';
   drawMgrs();
@@ -739,18 +759,9 @@ $('#board').addEventListener('click', async e => {
     else if (t.dataset.act === 'udyes') { const id = +t.dataset.pid; undraftArm = null; await api('unpick', { playerId: id }); toast('Back on the board'); }
     else if (t.dataset.act === 'udno') { undraftArm = null; render(); }
     else if (t.dataset.act === 'close') { ed = null; render(); }
-    else if (t.dataset.act === 'savepick') {
-      const picked = S.picks.some(k => k.playerId === ed.id);
-      await api(picked ? 'repick' : 'pick', { playerId: ed.id, manager: +ed.mgr, price: +ed.price || 0 });
-      toast(picked ? 'Pick updated' : 'Pick recorded'); ed = null; render();
-    }
-    else if (t.dataset.act === 'saveplayer') {
-      await api('player', { id: ed.id, tag: ed.tag, rookie: ed.rookie, injury: ed.injury, miss: +ed.miss || 0, note: ed.note, why: ed.why });
-      toast('Player updated');
-    }
-    else if (auction() && t.dataset.mine) openEditor(+t.dataset.mine, S.me);
+    else if (auction() && t.dataset.mine) { freezeRecs(); openEditor(+t.dataset.mine, S.me, whereOf(t)); }
     else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
-    else if (t.dataset.edit && S.you?.admin) { if (ed?.id === +t.dataset.edit) { ed = null; render(); } else openEditor(+t.dataset.edit); }
+    else if (t.dataset.edit && S.you?.admin) { if (ed?.id === +t.dataset.edit && ed.where === whereOf(t)) { ed = null; render(); } else { freezeRecs(); openEditor(+t.dataset.edit, undefined, whereOf(t)); } }
     else if (t.tagName === 'TH' && t.dataset.k) {
       const k = t.dataset.k;
       if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = ['name', 'team', 'pos', 'rank'].includes(k) ? 1 : -1; }
@@ -767,6 +778,13 @@ $('#board').addEventListener('input', e => {
 // Owner and Amount save themselves as soon as they're chosen or entered.
 $('#board').addEventListener('change', async e => {
   const t = e.target;
+  if (t.dataset.f && ed) {
+    const row = t.closest('tr.editrow')?.previousElementSibling;
+    if (row?.dataset?.rid) clickAnchor = row.dataset.rid;
+    ed[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+    await saveEditor(t.dataset.f);
+    return;
+  }
   if (!t.dataset.pf) return;
   const row = t.closest('tr.editrow')?.previousElementSibling;
   if (row?.dataset?.rid) clickAnchor = row.dataset.rid;
@@ -783,7 +801,7 @@ $('#board').addEventListener('change', async e => {
 $('#board').addEventListener('keydown', e => {
   const t = e.target;
   if (e.key === 'Enter' && t.dataset.pf) { e.preventDefault(); t.blur(); }
-  if (e.key === 'Enter' && t.dataset.f === 'price') { e.preventDefault(); document.querySelector('[data-act=savepick]')?.click(); }
+  if (e.key === 'Enter' && t.dataset.f) { e.preventDefault(); t.blur(); }
   if (e.key === 'Enter' && (t.dataset.edit || t.dataset.pencil)) t.click();
   if (e.key === 'Escape' && t.closest('.editor')) { ed = null; render(); }
 });
@@ -818,7 +836,13 @@ function tab(name) {
   $('#tab-setup').classList.toggle('active', name === 'setup');
 }
 $('#tab-board').onclick = () => tab('board');
-$('#tab-setup').onclick = () => tab('setup');
+$('#tab-setup').onclick = () => { tab('setup'); listBackups(); };
+async function listBackups() {
+  try {
+    const r = await (await fetch('api/backups', { cache: 'no-store' })).json();
+    $('#s-backups').innerHTML = r.backups.slice(0, 5).map(n => `<li><a href="api/backups/${encodeURIComponent(n)}">${esc(n)}</a></li>`).join('') || '<li>None yet</li>';
+  } catch {}
+}
 
 // Setup actions.
 $('#s-save').onclick = async () => {
