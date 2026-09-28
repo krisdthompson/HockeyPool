@@ -114,11 +114,11 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 
 <main id="board">
   <section class="panel">
+    <div id="recs" class="admin-only"></div>
     <div class="searchbar">
-      <input type="search" id="q" list="qlist" autocomplete="off" placeholder="Search: type a name, team or position (e.g. mcdavid, edm, vgk rw) — press / to jump here">
+      <input type="search" id="q" list="qlist" autocomplete="off" placeholder="Search by last name or team (2+ letters, e.g. stone, vgk)">
       <datalist id="qlist"></datalist>
     </div>
-    <div id="recs" class="admin-only"></div>
     <div class="filters">
       <select id="fpos"><option value="">All pos</option><option>C</option><option>LW</option><option>RW</option><option>F</option><option>D</option><option>G</option></select>
       <select id="fteam"><option value="">All teams</option></select>
@@ -380,18 +380,27 @@ function analyse() {
 }
 
 const fold = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-let qlistFor = -1;
+// Search matches the start of a player's last name (any word after the
+// first name) or the team code, once at least two letters are typed.
+const lastName = n => fold(n).split(/\s+/).slice(1);
+const searchQ = () => { const q = fold($('#q').value.trim()); return q.length >= 2 ? q : ''; };
+const matches = (p, q) => fold(p.team).startsWith(q) || lastName(p.name).some(w => w.startsWith(q) || w.replace(/[^a-z]/g, '').startsWith(q.replace(/[^a-z]/g, '')));
+let suggestedFor = null;
+function suggest() {
+  const q = searchQ();
+  if (q === suggestedFor) return;
+  suggestedFor = q;
+  if (!q) { $('#qlist').innerHTML = ''; return; }
+  const teams = [...new Set(S.players.map(p => p.team).filter(t => t && fold(t).startsWith(q)))];
+  const names = S.players.filter(p => lastName(p.name).some(w => w.startsWith(q))).slice(0, 15);
+  $('#qlist').innerHTML = teams.map(t => `<option value="${esc(t)}">team</option>`).join('')
+    + names.map(p => `<option value="${esc(p.name.split(' ').slice(1).join(' '))}">${esc(p.name)} · ${esc(p.team)}</option>`).join('');
+}
 function render() {
   document.body.classList.toggle('guest', !S.you?.admin);
   if (!S.you?.admin && ['score', 'val', 'good', 'maxb', 'rank'].includes(sortKey)) { sortKey = 'proj'; sortDir = -1; }
   $('#you').textContent = S.you ? `👤 ${S.you.name}${S.you.admin ? '' : ' (guest)'}` : '';
-  if (qlistFor !== S.players.length) {
-    // Type-ahead suggestions: every player, then team codes.
-    qlistFor = S.players.length;
-    const teams = [...new Set(S.players.map(p => p.team).filter(Boolean))].sort();
-    $('#qlist').innerHTML = S.players.map(p => `<option value="${esc(p.name)}">${esc(p.team)} ${esc(p.pos)}</option>`).join('')
-      + teams.map(t => `<option value="${esc(t)}">team</option>`).join('');
-  }
+  suggest();
   if (!S) return;
   const A = analyse();
   const n = S.picks.length, done = n >= totalPicks();
@@ -417,15 +426,10 @@ function render() {
   }
 
   // Player table.
-  const q = fold($('#q').value.trim()), fpos = $('#fpos').value, fteam = ft.value;
-  const toks = q.split(/\s+/).filter(Boolean);
+  const q = searchQ(), fpos = $('#fpos').value, fteam = ft.value;
   let rows = A.rows.filter(r => {
     if (r.pick && !$('#fdrafted').checked && !q) return false;
-    if (toks.length) {
-      // Every word must match the name, the start of the team, or the position.
-      const name = fold(r.name), team = fold(r.team), pos = fold(r.pos).split(/[\/, ]+/);
-      if (!toks.every(t => name.includes(t) || team.startsWith(t) || pos.includes(t) || (t === 'f' && !pos.includes('d')))) return false;
-    }
+    if (q && !matches(r, q)) return false;
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
       if (fpos === 'F' ? !/C|LW|RW|F|W/.test(pos) : !pos.split(/[\/, ]+/).includes(fpos)) return false;
@@ -474,13 +478,13 @@ function render() {
   }).join('') || `<tr><td colspan="15" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
-  $('#addplayer').style.display = qRaw.length > 3 && !S.players.some(p => p.name.toLowerCase() === qRaw.toLowerCase()) ? '' : 'none';
+  $('#addplayer').style.display = S.you?.admin && qRaw.length >= 4 && !rows.length ? '' : 'none';
   $('#addplayer').textContent = `+ Add "${qRaw}" as a player`;
   $('#count').textContent = `${rows.length} shown${rows.length > shown.length ? ` (first ${shown.length})` : ''} · ${S.players.length - S.picks.length} available of ${S.players.length}`;
   document.querySelectorAll('#players th').forEach(th => th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.k === sortKey ? (sortDir < 0 ? ' ▼' : ' ▲') : ''));
 
   // Best buys: the top of the ranking you can still afford, plus any targets.
-  if (!done && S.you?.admin && !$('#q').value.trim()) {
+  if (!done && S.you?.admin && !searchQ()) {
     const myMax = auction() ? money(S.me).max : Infinity;
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
     const best = avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5);
