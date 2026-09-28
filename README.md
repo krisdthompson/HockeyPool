@@ -69,18 +69,47 @@ the same URL, and picks sync every 2 seconds.
 
 ## Logins
 
-The browser asks for a username and password.
+Signing in happens on a page (`/login`), never a browser pop-up. It sets a
+signed session cookie that lasts 30 days.
 
-- **kris** (the admin) sees everything: live recommendations, values, max
-  bids, ★/⚠ flags and their reasons, Setup, and ticking players off.
-- **Any other username** with the guest password gets a read-only board:
-  search, type-ahead and stats, with no recommendations, values or flags.
-  The server doesn't even send guests the admin's flags and reasons.
+- **kris** (the admin) signs in with the admin password and sees
+  everything: live recommendations, values, max bids, ★/⚠ flags and their
+  reasons, Setup, and ticking players off.
+- **Guests** press **Sign in as guest** and enter the entry phrase (and a
+  name if they like). They get a read-only board: search, type-ahead and
+  stats, with no recommendations, values or flags. The server never even
+  sends guests the admin's flags or reasons.
 
-Passwords live in `fly.toml` only as PBKDF2 hashes (`DRAFT_ADMIN_HASH`,
-`DRAFT_GUEST_HASH`). Make a new one with `go run . hash <password>`. A
+Passwords live in `fly.toml` only as PBKDF2 hashes (`DRAFT_ADMIN_HASH`, and
+`DRAFT_GUEST_HASH`, which takes comma-separated hashes to accept more than
+one phrase). Make a new hash with `go run . hash <password>`. A
 `DRAFT_PASSWORD` fly secret also works for the admin. With nothing
 configured, the site is open and everyone is the admin.
+
+## UI rules
+
+The page follows the platform UI standard (`clodemode/about-lore`, SCOUT):
+**no modals**. That means no `<dialog>`, `confirm()`, `prompt()` or
+`alert()`. Panels expand inline next to what was clicked, and every
+expanded panel collapses again.
+
+- Tick a player: **Drafted by** (a pool team) and a price appear right in
+  the row. **Save** records them; **Skip** leaves the buyer unrecorded.
+- Click a name: an editor opens under the row (buyer, price, flag,
+  injury, notes). Click the name again, press Close, or press Esc to
+  close it.
+- Destructive Setup actions show an inline "Yes / Cancel".
+- Live updates wait while you're typing in an inline panel, so nothing
+  you've typed gets wiped.
+
+## Behaviour specs (Gherkin)
+
+`features/*.feature` describe the behaviour in Gherkin. `bdd_test.go` runs
+them with [godog](https://github.com/cucumber/godog) as part of
+`go test ./...`; use `go test -run TestFeatures -v` to see each scenario.
+Scenarios tagged `@ui` (`features/board-ui.feature`) describe the page
+and are checked in a headless browser at 375, 768 and 1280 px, not in
+`go test`.
 
 ## Run locally
 

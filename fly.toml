@@ -11,7 +11,8 @@ primary_region = "dfw"
   # `go run . hash <password>`. A DRAFT_PASSWORD secret also works for the admin.
   DRAFT_ADMIN_USER = "kris"
   DRAFT_ADMIN_HASH = "pbkdf2$200000$6ee5208d934b7b75531af08521e12af1$90217bfbe364a51eb8062667665a5413ea5d40a9a3cc776a694531e8a27163a1"
-  DRAFT_GUEST_HASH = "pbkdf2$200000$01cdbaa58e6677b8e88ee32095b5f3aa$9b48a23e6c2c6cd59b7dc52be4c3b66988f77cac2cfb343bbab957374fa46660"
+  # Guest entry phrases (comma-separated hashes accept more than one).
+  DRAFT_GUEST_HASH = "pbkdf2$200000$e9d9ea72faedf018065fabd863105f35$a16d0e37defcfdad1b46051f5739ca8443d49fbb23a7401e9e24039694e24939,pbkdf2$200000$025a81493e9742791d5d50f5ef90b56a$9f748035953a689b3d7a59e1519886e91e621541d420c0003429a429ab813cac"
 
 [mounts]
   source = "draft_data"

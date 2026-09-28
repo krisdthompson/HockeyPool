@@ -494,6 +494,10 @@ func (sv *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("GET /", http.FileServerFS(static))
+	mux.HandleFunc("GET /login", sv.loginPage)
+	mux.HandleFunc("POST /login", sv.loginPage)
+	mux.HandleFunc("GET /logout", sv.logout)
+	mux.HandleFunc("POST /logout", sv.logout)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") })
 
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
@@ -665,7 +669,13 @@ func (sv *server) routes() http.Handler {
 			others := *s
 			others.Picks = slices.Delete(slices.Clone(s.Picks), i, i+1)
 			var err error
-			if price, err = checkBuy(&others, m, req.Price); err != nil {
+			if req.Price == 0 {
+				// Buyer known, price missed: check the roster only.
+				_, err = checkBuy(&State{Managers: s.Managers, RosterSize: s.RosterSize, Picks: others.Picks}, m, 0)
+			} else {
+				price, err = checkBuy(&others, m, req.Price)
+			}
+			if err != nil {
 				return err
 			}
 		}

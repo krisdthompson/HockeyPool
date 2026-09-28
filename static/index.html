@@ -32,8 +32,7 @@ button.small { padding: 2px 8px; font-size: 12px; }
 button:disabled { opacity: .45; cursor: default; }
 nav button.active { background: var(--accent); color: var(--accent-text); }
 input, select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
-main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 360px; }
-@media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .panel h2 { font-size: 14px; margin: 0 0 8px; }
 .side { display: grid; gap: 16px; align-content: start; }
@@ -86,10 +85,10 @@ td.maxb { font-weight: 700; }
 .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .roster li { margin: 3px 0; }
 .roster { padding-left: 20px; margin: 6px 0; }
-.weights label { display: grid; grid-template-columns: 1fr 70px 40px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
+.weights label { display: grid; grid-template-columns: minmax(0, 260px) 160px 40px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
 .weights output { text-align: right; font-variant-numeric: tabular-nums; }
 .board { font-size: 12px; }
-.board td, .board th { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.board td, .board th { text-align: left; white-space: nowrap; }
 .board td.me, .board th.me { background: var(--mine); }
 .board td.next { outline: 2px solid var(--accent); outline-offset: -2px; }
 .picks { max-height: 260px; overflow-y: auto; font-size: 13px; }
@@ -100,9 +99,23 @@ td.maxb { font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
 .err { color: var(--bad); }
 .ok { color: var(--good); }
-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; max-width: 420px; width: calc(100% - 32px); }
-dialog label { display: block; margin: 8px 0; }
-dialog input[type=text], dialog input[type=number], dialog select { width: 100%; }
+/* Inline panels (no modals): editors open under their row, confirmations beside their button. */
+tr.editrow > td { background: var(--chip); padding: 10px 12px; text-align: left; white-space: normal; }
+.editor .edline { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+.editor label { display: inline-flex; gap: 6px; align-items: center; }
+.editor input[type=text] { min-width: 180px; }
+.editor .val { font-weight: 600; }
+td.own .pend { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 4px; }
+td.own .pend select { max-width: 140px; }
+td.own .pend input { width: 64px; height: auto; }
+.confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: 6px; }
+.confirm[hidden] { display: none; }
+button.danger { color: var(--bad); }
+.addform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.addform[hidden] { display: none; }
+details.weights > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details.weights[open] > summary { margin-bottom: 8px; }
+header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: .95; }
 @media (max-width: 640px) { .hide-sm { display: none; } }
@@ -116,7 +129,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
   <nav>
     <button id="tab-board" class="active">Board</button>
     <button id="tab-setup" class="admin-only">Setup</button>
-    <span class="muted you" id="you"></span>
+    <span class="muted you" id="you"></span><a class="signout" href="/logout">Sign out</a>
   </nav>
 </header>
 
@@ -158,11 +171,17 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
         <tbody></tbody>
       </table>
     </div>
-    <p><button id="addplayer" style="display:none"></button></p>
+    <p><button id="addplayer" style="display:none" aria-controls="addform" aria-expanded="false"></button></p>
+    <div id="addform" class="addform admin-only" hidden>
+      <label>NHL team <input id="add-team" size="5" placeholder="CBJ"></label>
+      <label>Position <select id="add-pos"><option>C</option><option>LW</option><option>RW</option><option>D</option></select></label>
+      <button class="primary" id="add-yes">Add player</button>
+      <button id="add-no">Cancel</button>
+    </div>
     <p class="muted" id="count"></p>
   </section>
 
-  <aside class="side">
+  <div class="side">
     <section class="panel admin-only">
       <h2 id="mytitle">My team</h2>
       <div class="chips" id="myteams"></div>
@@ -170,18 +189,6 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
       <div id="stacknext" class="muted"></div>
     </section>
 
-    <section class="panel weights admin-only">
-      <h2>Ranking weights</h2>
-      <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
-      <label title="Blend ESPN's tier-implied points into the projection. 0 = ignore ESPN, 100 = ESPN only (for players ESPN ranks).">ESPN tier weight % <input type="range" id="w-espn" min="0" max="100" step="5"><output></output></label>
-      <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
-      <label>Rookie discount % <input type="range" id="w-rookie" min="-20" max="50" step="1"><output></output></label>
-      <label title="Rookies with under 40 GP are projected as a blend of their pace and this baseline">Rookie baseline pts <input type="range" id="w-rbase" min="10" max="70" step="1"><output></output></label>
-      <label>Day-to-day discount % <input type="range" id="w-dtd" min="0" max="30" step="1"><output></output></label>
-      <label>IR / out discount % <input type="range" id="w-ir" min="0" max="100" step="5"><output></output></label>
-      <label>Over team-cap discount % <input type="range" id="w-cap" min="0" max="100" step="5"><output></output></label>
-      <p class="muted" style="margin:6px 0 0;font-size:12px">A player's "expected games missed" overrides the injury discounts. Weights are saved in this browser only.</p>
-    </section>
 
     <section class="panel">
       <h2>Recent picks <button class="small admin-only" id="undo" style="float:right">Undo last</button></h2>
@@ -192,7 +199,19 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
       <h2>Draft board</h2>
       <div class="tablewrap"><table class="board" id="boardgrid"></table></div>
     </section>
-  </aside>
+    <details class="panel weights admin-only" id="weights">
+      <summary>Ranking weights</summary>
+      <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
+      <label title="Blend ESPN's tier-implied points into the projection. 0 = ignore ESPN, 100 = ESPN only (for players ESPN ranks).">ESPN tier weight % <input type="range" id="w-espn" min="0" max="100" step="5"><output></output></label>
+      <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
+      <label>Rookie discount % <input type="range" id="w-rookie" min="-20" max="50" step="1"><output></output></label>
+      <label title="Rookies with under 40 GP are projected as a blend of their pace and this baseline">Rookie baseline pts <input type="range" id="w-rbase" min="10" max="70" step="1"><output></output></label>
+      <label>Day-to-day discount % <input type="range" id="w-dtd" min="0" max="30" step="1"><output></output></label>
+      <label>IR / out discount % <input type="range" id="w-ir" min="0" max="100" step="5"><output></output></label>
+      <label>Over team-cap discount % <input type="range" id="w-cap" min="0" max="100" step="5"><output></output></label>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">A player's "expected games missed" overrides the injury discounts. Weights are saved in this browser only.</p>
+    </details>
+  </div>
 </main>
 
 <div id="setup">
@@ -221,8 +240,10 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <div class="row">
       <input type="file" id="s-file" accept=".csv,.tsv,.txt">
       <button class="primary" id="s-merge" title="Update matching players (by name) with only the columns in this list; add new players. Safe mid-draft.">Merge into list</button>
-      <button id="s-import">Replace whole list</button>
-      <button id="s-reseed" title="Throw away the current list and reload the organizer's official list">Reload official list</button>
+      <button id="s-import" data-confirm="c-import" aria-controls="c-import" aria-expanded="false">Replace whole list</button>
+      <span id="c-import" class="confirm" hidden>Replace every player? <button class="danger" data-yes="import">Yes, replace</button> <button data-no>Cancel</button></span>
+      <button id="s-reseed" data-confirm="c-reseed" aria-controls="c-reseed" aria-expanded="false" title="Throw away the current list and reload the organizer's official list">Reload official list</button>
+      <span id="c-reseed" class="confirm" hidden>Reload the official list? Your injury/rookie edits are lost. <button class="danger" data-yes="reseed">Yes, reload</button> <button data-no>Cancel</button></span>
       <span id="i-msg"></span>
     </div>
   </section>
@@ -232,32 +253,13 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <div class="row">
       <a href="api/export"><button>Download backup (JSON)</button></a>
       <label>Restore backup <input type="file" id="s-restore" accept=".json"></label>
-      <button id="s-reset" style="color:var(--bad)">Clear all picks</button>
+      <span id="c-restore" class="confirm" hidden>Replace the whole draft with this backup? <button class="danger" data-yes="restore">Yes, restore</button> <button data-no>Cancel</button></span>
+      <button id="s-reset" class="danger" data-confirm="c-reset" aria-controls="c-reset" aria-expanded="false">Clear all picks</button>
+      <span id="c-reset" class="confirm" hidden>Clear every pick? Players, settings and flags stay. <button class="danger" data-yes="reset">Yes, clear</button> <button data-no>Cancel</button></span>
     </div>
   </section>
 </div>
 
-<dialog id="edit">
-  <form method="dialog" id="editform">
-    <h3 id="e-title" style="margin:0 0 6px"></h3>
-    <div class="muted" id="e-sub"></div>
-    <div id="e-value" style="margin-top:6px;font-weight:600"></div>
-    <label>Flag <select id="e-tag"><option value="">None</option><option value="target">★ Target</option><option value="avoid">⚠ Avoid</option><option value="caution">Caution</option></select></label>
-    <label><input type="checkbox" id="e-rookie"> Rookie</label>
-    <label>Injury status <input type="text" id="e-injury" placeholder="e.g. DTD, IR, LTIR - back Dec"></label>
-    <label>Expected games missed (0 = unknown) <input type="number" id="e-miss" min="0" max="82"></label>
-    <label>Note <input type="text" id="e-note"></label>
-    <label>Why flagged (only you see this) <input type="text" id="e-why"></label>
-    <div class="row">
-      <button value="save" class="primary">Save</button>
-      <button value="cancel">Cancel</button>
-    </div>
-    <hr style="border:0;border-top:1px solid var(--line)">
-    <label>Drafted by (pool team) <select id="e-mgr"></select></label>
-    <label id="e-pricewrap">Price $ <input type="number" id="e-price" min="1"></label>
-    <button value="draft" id="e-draft">Record pick</button>
-  </form>
-</dialog>
 
 <div id="toast"></div>
 
@@ -282,10 +284,20 @@ async function api(path, body) {
   return j;
 }
 
+// Inline panel state lives here, so live updates re-render it instead of wiping it.
+let ed = null;              // the open player editor: { id, mgr, price, tag, rookie, injury, miss, note, why }
+const pending = new Map();  // ticked players still waiting for "drafted by": id -> { mgr, price }
+let focusNext = null;       // selector to focus after the next render
+// Never rebuild the page under someone's cursor: defer live updates while an inline field has focus.
+const typing = () => { const a = document.activeElement; return !!a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName) && !!a.closest('.editor, .pend'); };
+let deferred = false;
+document.addEventListener('focusout', () => setTimeout(() => { if (deferred && !typing()) { deferred = false; render(); } }, 0));
+
 async function poll() {
   try {
     const r = await fetch('api/state' + (S ? '?since=' + S.version : ''), { cache: 'no-store' });
-    if (r.status === 200) { S = await r.json(); render(); }
+    if (r.status === 401) { location.href = '/login'; return; }
+    if (r.status === 200) { S = await r.json(); if (typing()) deferred = true; else render(); }
   } catch {}
 }
 
@@ -435,7 +447,7 @@ function render() {
   // Player table.
   const q = searchQ(), fpos = $('#fpos').value, fteam = ft.value;
   let rows = A.rows.filter(r => {
-    if (r.pick && $('#fhidedrafted').checked && !q) return false;
+    if (r.pick && $('#fhidedrafted').checked && !q && !pending.has(r.id)) return false;
     if (q && !matches(r, q)) return false;
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
@@ -471,17 +483,15 @@ function render() {
       r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
-    const pickInfo = r.pick ? `<a class="who" data-edit="${r.id}" title="Set who drafted him and the price">${r.pick.manager >= 0 ? esc(S.managers[r.pick.manager]) : 'who?'}${r.pick.price ? ' $' + r.pick.price : ''}</a>` :
-      `<button class="small primary admin-only" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
-      <td class="l own admin-only"><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted by anyone"> ${pickInfo}</td>
+      <td class="l own admin-only">${ownCell(r, canPick)}</td>
       <td class="admin-only">${r.rank ?? ''}</td>
-      <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
+      <td class="l name">${nameLink(r)}${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
       <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
       <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td>
       ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
-      </tr>`;
+      </tr>${editorRow(r, 13)}`;
   }).join('') || `<tr><td colspan="13" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
@@ -494,17 +504,18 @@ function render() {
   if (!done && S.you?.admin && !searchQ()) {
     const myMax = auction() ? money(S.me).max : Infinity;
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
-    const best = avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5);
+    const best = A.rows.filter(r => pending.has(r.id));
+    best.push(...avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5));
     for (const r of avail) if (r.tag === 'target' && !best.includes(r)) best.push(r);
     const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
     $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
       <div class="tablewrap"><table><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
-        <td class="own"><input type="checkbox" class="gone" data-gone="${r.id}" title="Drafted by anyone"> <button class="small primary" data-mine="${r.id}" title="I bought him">Mine</button></td>
-        <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a> <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
+        <td class="l own">${ownCell(r, true)}</td>
+        <td class="l name">${nameLink(r)} <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
         <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
-        ${auction() ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb" title="Max bid"><span class="hide-sm">max </span>≤$${r.maxb}</td>` : ''}
-        </tr>`).join('')}</tbody></table></div>`;
+        ${auction() && !r.pick ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb" title="Max bid"><span class="hide-sm">max </span>≤$${r.maxb}</td>` : '<td colspan="3"></td>'}
+        </tr>${editorRow(r, 6)}`).join('')}</tbody></table></div>`;
   } else $('#recs').innerHTML = '';
 
   // My team.
@@ -538,6 +549,58 @@ function render() {
   $('#boardgrid').innerHTML = html;
 
   renderSetup();
+  if (focusNext) { document.querySelector(focusNext)?.focus(); focusNext = null; }
+}
+
+// The Drafted cell: tick box, then either Mine, the pending "drafted by" fields, or who bought him.
+function ownCell(r, canPick) {
+  const box = `<input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted by anyone" aria-label="Drafted">`;
+  if (!r.pick) return `${box} <button class="small primary" data-mine="${r.id}" title="I bought him" ${canPick ? '' : 'disabled'}>Mine</button>`;
+  const pd = pending.get(r.id);
+  if (pd) return `${box}<span class="pend">
+    <select data-pf="mgr" data-pid="${r.id}" aria-label="Drafted by"><option value="">Drafted by…</option>${S.managers.map((m, i) => `<option value="${i}" ${String(i) === pd.mgr ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+    ${auction() ? `<input type="number" data-pf="price" data-pid="${r.id}" min="0" placeholder="$" value="${esc(pd.price)}" aria-label="Price">` : ''}
+    <button class="small primary" data-act="psave" data-pid="${r.id}">Save</button><button class="small" data-act="pskip" data-pid="${r.id}">Skip</button></span>`;
+  return `${box} <span class="muted">${r.pick.manager >= 0 ? esc(S.managers[r.pick.manager]) : 'drafted'}${r.pick.price ? ' $' + r.pick.price : ''}</span>`;
+}
+
+function nameLink(r) {
+  if (!S.you?.admin) return `<b>${esc(r.name)}</b>`;
+  const open = ed?.id === r.id;
+  return `<a data-edit="${r.id}" role="button" tabindex="0" aria-expanded="${open}" aria-controls="ed-${r.id}">${esc(r.name)}</a>`;
+}
+
+// The player editor opens as a row directly under the player (no modal).
+function editorRow(r, cols) {
+  if (!S.you?.admin || ed?.id !== r.id) return '';
+  const opt = (v, label, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
+  return `<tr class="editrow"><td colspan="${cols}"><div class="editor" id="ed-${r.id}">
+    ${auction() && !r.pick ? `<div class="val">Value $${Math.round(r.val)} · good buy ≤ $${r.good} · max $${r.maxb}</div>` : ''}
+    <div class="edline">
+      <label>Drafted by <select data-f="mgr">${opt(-1, 'Someone (not recorded)', ed.mgr)}${S.managers.map((m, i) => opt(i, esc(m), ed.mgr)).join('')}</select></label>
+      ${auction() ? `<label>Price $ <input type="number" data-f="price" min="0" style="width:80px" value="${esc(ed.price)}"></label>` : ''}
+      <button class="primary" data-act="savepick">${r.pick ? 'Update pick' : 'Record pick'}</button>
+    </div>
+    <div class="edline">
+      <label>Flag <select data-f="tag">${opt('', 'None', ed.tag)}${opt('target', '★ Target', ed.tag)}${opt('avoid', '⚠ Avoid', ed.tag)}${opt('caution', 'Caution', ed.tag)}</select></label>
+      <label><input type="checkbox" data-f="rookie" ${ed.rookie ? 'checked' : ''}> Rookie</label>
+      <label>Injury <input type="text" data-f="injury" value="${esc(ed.injury)}" placeholder="DTD, IR, out to Nov"></label>
+      <label>Games missed <input type="number" data-f="miss" min="0" max="82" style="width:64px" value="${esc(ed.miss)}"></label>
+    </div>
+    <div class="edline">
+      <label>Note <input type="text" data-f="note" value="${esc(ed.note)}"></label>
+      <label>Why flagged (only you) <input type="text" data-f="why" value="${esc(ed.why)}"></label>
+    </div>
+    <div class="edline"><button class="primary" data-act="saveplayer">Save player</button><button data-act="close">Close</button></div>
+  </div></td></tr>`;
+}
+
+function openEditor(id, mgr) {
+  const p = S.players.find(p => p.id === id), pick = S.picks.find(k => k.playerId === id);
+  ed = { id, mgr: mgr ?? (pick ? pick.manager : -1), price: pick?.price || '', tag: p.tag || '', rookie: p.rookie,
+    injury: p.injury || '', miss: p.miss || 0, note: p.note || '', why: p.why || '' };
+  focusNext = mgr !== undefined && auction() ? `#ed-${id} [data-f=price]` : `#ed-${id} [data-f=mgr]`;
+  render();
 }
 
 let setupFilled = -1;
@@ -554,13 +617,14 @@ function renderSetup() {
   $('#s-minbid').value = S.minBid || 1;
 }
 // Editable pool-team list; "I am" follows your team by name as it moves.
-let mgrs = [], meName = '';
+let mgrs = [], meName = '', delArm = -1;
 function drawMgrs() {
   $('#s-mgrlist').innerHTML = mgrs.map((m, i) => `<li><div>
     <input type="text" value="${esc(m)}" data-mi="${i}">
     <button type="button" data-up="${i}" ${i ? '' : 'disabled'} title="Move up">▲</button>
     <button type="button" data-down="${i}" ${i < mgrs.length - 1 ? '' : 'disabled'} title="Move down">▼</button>
-    <button type="button" data-del="${i}" title="Remove">✕</button></div></li>`).join('');
+    <button type="button" data-del="${i}" title="Remove" aria-expanded="${delArm === i}">✕</button>
+    ${delArm === i ? `<span class="confirm">Remove ${esc(m)}? <button type="button" class="danger" data-delyes="${i}">Yes, remove</button> <button type="button" data-delno>Cancel</button></span>` : ''}</div></li>`).join('');
   $('#s-me').innerHTML = mgrs.map((m, i) => `<option value="${i}">${i + 1}. ${esc(m)}</option>`).join('');
   const k = mgrs.indexOf(meName);
   if (k >= 0) $('#s-me').value = k;
@@ -570,7 +634,9 @@ $('#s-mgrlist').addEventListener('click', e => {
   const swap = (i, j) => { [mgrs[i], mgrs[j]] = [mgrs[j], mgrs[i]]; drawMgrs(); };
   if (d.up) swap(+d.up, +d.up - 1);
   else if (d.down) swap(+d.down, +d.down + 1);
-  else if (d.del && confirm(`Remove ${mgrs[+d.del]}?`)) { mgrs.splice(+d.del, 1); drawMgrs(); }
+  else if (d.del) { delArm = delArm === +d.del ? -1 : +d.del; drawMgrs(); }
+  else if (d.delyes) { mgrs.splice(+d.delyes, 1); delArm = -1; drawMgrs(); }
+  else if (d.delno !== undefined) { delArm = -1; drawMgrs(); }
 });
 $('#s-mgrlist').addEventListener('input', e => {
   const i = e.target.dataset.mi;
@@ -587,12 +653,30 @@ $('#board').addEventListener('click', async e => {
   const t = e.target;
   try {
     if (t.dataset.gone) {
-      if (t.checked) { await api('pick', { playerId: +t.dataset.gone, manager: -1 }); toast('Marked drafted'); }
-      else { await api('unpick', { playerId: +t.dataset.gone }); toast('Back on the board'); }
+      const id = +t.dataset.gone;
+      if (t.checked) { pending.set(id, { mgr: '', price: '' }); focusNext = `${t.closest('#recs') ? '#recs' : '#players'} select[data-pf=mgr][data-pid="${id}"]`; await api('pick', { playerId: id, manager: -1 }); }
+      else { pending.delete(id); await api('unpick', { playerId: id }); toast('Back on the board'); }
     }
-    else if (auction() && t.dataset.mine) openEdit(+t.dataset.mine, S.me);
+    else if (t.dataset.act === 'psave') {
+      const id = +t.dataset.pid, pd = pending.get(id);
+      if (pd.mgr === '') { toast('Choose who drafted him, or Skip'); return; }
+      await api('repick', { playerId: id, manager: +pd.mgr, price: +pd.price || 0 });
+      pending.delete(id); render(); toast('Saved');
+    }
+    else if (t.dataset.act === 'pskip') { pending.delete(+t.dataset.pid); render(); }
+    else if (t.dataset.act === 'close') { ed = null; render(); }
+    else if (t.dataset.act === 'savepick') {
+      const picked = S.picks.some(k => k.playerId === ed.id);
+      await api(picked ? 'repick' : 'pick', { playerId: ed.id, manager: +ed.mgr, price: +ed.price || 0 });
+      toast(picked ? 'Pick updated' : 'Pick recorded'); ed = null; render();
+    }
+    else if (t.dataset.act === 'saveplayer') {
+      await api('player', { id: ed.id, tag: ed.tag, rookie: ed.rookie, injury: ed.injury, miss: +ed.miss || 0, note: ed.note, why: ed.why });
+      toast('Player updated');
+    }
+    else if (auction() && t.dataset.mine) openEditor(+t.dataset.mine, S.me);
     else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
-    else if (t.dataset.edit && S.you?.admin) openEdit(+t.dataset.edit);
+    else if (t.dataset.edit && S.you?.admin) { if (ed?.id === +t.dataset.edit) { ed = null; render(); } else openEditor(+t.dataset.edit); }
     else if (t.tagName === 'TH' && t.dataset.k) {
       const k = t.dataset.k;
       if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = ['name', 'team', 'pos', 'rank'].includes(k) ? 1 : -1; }
@@ -600,14 +684,28 @@ $('#board').addEventListener('click', async e => {
     }
   } catch (err) { toast(err.message); }
 });
+// Typing in inline panels updates their state, so re-renders keep it.
+$('#board').addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.f && ed) ed[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+  if (t.dataset.pf) { const pd = pending.get(+t.dataset.pid); if (pd) pd[t.dataset.pf] = t.value; }
+});
+$('#board').addEventListener('keydown', e => {
+  const t = e.target;
+  if (e.key === 'Enter' && t.dataset.pf) { e.preventDefault(); $(`[data-act=psave][data-pid="${t.dataset.pid}"]`)?.click(); }
+  if (e.key === 'Enter' && t.dataset.f === 'price') { e.preventDefault(); document.querySelector('[data-act=savepick]')?.click(); }
+  if (e.key === 'Enter' && t.dataset.edit) t.click();
+  if (e.key === 'Escape' && t.closest('.editor')) { ed = null; render(); }
+});
 ['#fminpts', '#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fhidedrafted'].forEach(s => $(s).addEventListener('input', render));
-$('#addplayer').onclick = async () => {
-  const name = $('#q').value.trim();
-  const team = (prompt(`NHL team for ${name} (e.g. CBJ)`) || '').trim();
-  const pos = (prompt(`Position for ${name} (C, LW, RW or D)`) || '').trim();
+const showAdd = open => { $('#addform').hidden = !open; $('#addplayer').setAttribute('aria-expanded', String(open)); if (open) $('#add-team').focus(); };
+$('#addplayer').onclick = () => showAdd($('#addform').hidden);
+$('#add-no').onclick = () => showAdd(false);
+$('#add-yes').onclick = async () => {
+  const name = $('#q').value.trim(), team = $('#add-team').value.trim(), pos = $('#add-pos').value;
   try {
-    await api('import', { mode: 'merge', text: `Name,Team,Pos,Note\n"${name.replace(/"/g, '')}",${team.replace(/,/g, '')},${pos.replace(/,/g, '')},Added on draft night` });
-    toast(`Added ${name}`);
+    await api('import', { mode: 'merge', text: `Name,Team,Pos,Note\n"${name.replace(/"/g, '')}",${team.replace(/,/g, '')},${pos},Added on draft night` });
+    showAdd(false); toast(`Added ${name}`);
   } catch (e) { toast(e.message); }
 };
 $('#undo').onclick = async () => { try { await api('undo'); toast('Last pick undone'); } catch (e) { toast(e.message); } };
@@ -621,48 +719,6 @@ for (const k of Object.keys(W_DEFAULT)) {
     render();
   });
 }
-
-let editPicked = false;
-function openEdit(id, winner) {
-  const p = S.players.find(p => p.id === id);
-  editId = id;
-  $('#e-title').textContent = p.name;
-  $('#e-sub').textContent = `${p.team} ${p.pos} · ${p.gp} GP, ${p.g} G, ${p.a} A, ${p.pts} P`;
-  $('#e-rookie').checked = p.rookie;
-  $('#e-tag').value = p.tag || '';
-  const r = analyse().rows.find(x => x.id === id);
-  $('#e-value').textContent = auction() && r && !r.pick ? `Value $${Math.round(r.val)} · good buy ≤ $${r.good} · max $${r.maxb}` : '';
-  $('#e-injury').value = p.injury;
-  $('#e-miss').value = p.miss || 0;
-  $('#e-note').value = p.note;
-  $('#e-why').value = p.why || '';
-  const pick = S.picks.find(k => k.playerId === id);
-  editPicked = !!pick;
-  $('#e-mgr').innerHTML = '<option value="-1">Someone (not recorded)</option>' + S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
-  if (pick) $('#e-mgr').value = pick.manager;
-  else if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? (auction() ? -1 : onClock(S.picks.length));
-  $('#e-draft').textContent = pick ? 'Update pick' : 'Record pick';
-  $('#e-draft').disabled = !pick && S.picks.length >= totalPicks();
-  $('#e-pricewrap').style.display = auction() ? '' : 'none';
-  $('#e-price').value = pick?.price || '';
-  $('#e-price').min = minBid();
-  $('#edit').showModal();
-  if (auction() && winner !== undefined) $('#e-price').focus();
-}
-// Enter in the price box records the pick rather than hitting the form's first button (Save).
-$('#e-price').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#edit').close('draft'); } });
-$('#edit').addEventListener('close', async () => {
-  const v = $('#edit').returnValue;
-  try {
-    if (v === 'save') {
-      await api('player', { id: editId, tag: $('#e-tag').value, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value, why: $('#e-why').value });
-      toast('Player updated');
-    } else if (v === 'draft') {
-      await api(editPicked ? 'repick' : 'pick', { playerId: editId, manager: +$('#e-mgr').value, price: +$('#e-price').value || 0 });
-      toast(editPicked ? 'Pick updated' : 'Pick recorded');
-    }
-  } catch (e) { toast(e.message); }
-});
 
 // Tabs.
 function tab(name) {
@@ -694,28 +750,32 @@ $('#s-merge').onclick = async () => {
     $('#i-msg').textContent = `Merged. ${s.players.length - before} new players added; ${s.players.length} total.`;
   } catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
 };
-$('#s-reseed').onclick = async () => {
-  if (!confirm("Replace the player list with the organizer's official list? Your injury/rookie edits are lost.")) return;
-  try { const s = await api('reseed'); $('#i-msg').className = 'ok'; $('#i-msg').textContent = `Loaded ${s.players.length} players`; }
-  catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
+// Destructive actions confirm in place: the button reveals Yes/Cancel beside it.
+const setConfirm = (id, open) => {
+  $('#' + id).hidden = !open;
+  document.querySelector(`[aria-controls="${id}"]`)?.setAttribute('aria-expanded', String(open));
 };
-$('#s-import').onclick = async () => {
-  if (S.players.length && !confirm('Replace the whole player list?')) return;
-  try {
+const confirmed = {
+  reseed: async () => { const s = await api('reseed'); $('#i-msg').className = 'ok'; $('#i-msg').textContent = `Loaded ${s.players.length} players`; },
+  import: async () => {
     const s = await api('import', { text: $('#s-csv').value });
     $('#i-msg').className = 'ok';
     $('#i-msg').textContent = `Imported ${s.players.length} players (${s.players.filter(p => p.rookie).length} rookies, ${s.players.filter(p => p.injury).length} with injury notes)`;
-  } catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
+  },
+  restore: async () => { const f = $('#s-restore').files[0]; await api('restore', JSON.parse(await f.text())); setupFilled = -1; toast('Backup restored'); },
+  reset: async () => { pending.clear(); ed = null; await api('reset'); toast('Draft reset: nobody drafted'); },
 };
-$('#s-restore').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  if (!confirm('Replace the whole draft with this backup?')) return;
-  try { await api('restore', JSON.parse(await f.text())); setupFilled = -1; toast('Backup restored'); } catch (err) { toast(err.message); }
-};
-$('#s-reset').onclick = async () => {
-  if (!confirm('Clear every pick? Players and settings stay.')) return;
-  try { await api('reset'); toast('Draft reset'); } catch (e) { toast(e.message); }
-};
+$('#setup').addEventListener('click', async e => {
+  const t = e.target;
+  if (t.dataset.confirm) setConfirm(t.dataset.confirm, $('#' + t.dataset.confirm).hidden);
+  else if (t.dataset.no !== undefined) setConfirm(t.closest('.confirm').id, false);
+  else if (t.dataset.yes) {
+    const box = t.closest('.confirm').id;
+    try { await confirmed[t.dataset.yes](); } catch (err) { $('#i-msg').className = 'err'; $('#i-msg').textContent = err.message; toast(err.message); }
+    setConfirm(box, false);
+  }
+});
+$('#s-restore').onchange = e => { if (e.target.files[0]) setConfirm('c-restore', true); };
 
 document.addEventListener('keydown', e => {
   if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); tab('board'); $('#q').focus(); }
