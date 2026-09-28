@@ -100,7 +100,11 @@ expanded panel collapses again.
 - Fix a mistake with the **✎** on a drafted player: in the list (with
   Hide drafted off), in Recent picks, or by clicking him on the draft
   board. The same details open where you clicked.
-- Unticking asks "Undraft …? Yes, undraft / Cancel" below the row first.
+- Unticking while the details are still open just undoes the tick. Once
+  they're dismissed, unticking asks "Undraft …? Yes, undraft / Cancel"
+  below the row first.
+- Nothing jumps: the row you click stays put on screen while the page
+  updates, and details fold open below it.
 - Click a name: an editor opens under the row (buyer, price, flag,
   injury, notes). Click the name again, press Close, or press Esc to
   close it.

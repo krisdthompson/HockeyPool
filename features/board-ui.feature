@@ -34,6 +34,17 @@ Feature: The draft board page
     Then the details row closes
     And the player leaves the list because drafted players are hidden
 
+  Scenario: Ticking doesn't move anything above the details
+    When Kris ticks Drafted on a player partway down the list
+    Then that player's row stays exactly where it was on screen
+    And the details fold open below it
+
+  Scenario: Unticking while the details are open undoes the tick
+    When Kris ticks Drafted on "Connor McDavid"
+    And Kris unticks him before dismissing the details
+    Then the details close without asking
+    And "Connor McDavid" is not drafted and is still in the list
+
   Scenario: Dismissing keeps him drafted without an owner
     When Kris ticks Drafted on "Connor McDavid"
     And Kris presses Dismiss
@@ -58,6 +69,7 @@ Feature: The draft board page
     Given "Connor McDavid" is drafted
     When Kris unticks Drafted on "Connor McDavid"
     Then he stays drafted and "Undraft Connor McDavid?" appears below his row
+    And his row stays in the list while the question is showing
     When Kris presses Cancel
     Then he is still drafted
     When Kris unticks him again and presses "Yes, undraft"

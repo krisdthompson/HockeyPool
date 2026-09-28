@@ -62,7 +62,10 @@ body.guest .admin-only { display: none !important; }
 .mgrlist li > div { display: flex; gap: 6px; align-items: center; }
 .mgrlist input { flex: 1; min-width: 0; max-width: 260px; }
 .mgrlist button { padding: 4px 10px; }
-td.own { white-space: nowrap; }
+td.own { white-space: nowrap; width: 150px; min-width: 150px; }
+.editor.fold { animation: fold-open .2s ease-out; transform-origin: top; overflow: hidden; }
+@keyframes fold-open { from { max-height: 0; opacity: 0; } to { max-height: 200px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .editor.fold { animation: none; } }
 a.who { color: var(--accent); cursor: pointer; text-decoration: underline dotted; font-size: 13px; }
 td.own input { vertical-align: middle; width: 18px; height: 18px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
@@ -419,7 +422,26 @@ function suggest() {
   $('#qlist').innerHTML = teams.map(t => `<option value="${esc(t)}">team</option>`).join('')
     + names.map(p => `<option value="${esc(p.name.split(' ').slice(1).join(' '))}">${esc(p.name)} · ${esc(p.team)}</option>`).join('');
 }
+// Keep what the user is looking at still: remember where one row sits on
+// screen before re-rendering, then scroll so it sits in the same place after.
+let clickAnchor = null, lastWhere = 'players';
+function anchorNow() {
+  let el = clickAnchor && document.querySelector(`[data-rid="${clickAnchor}"]`);
+  if (!el) el = [...document.querySelectorAll('#recs tr[data-rid], #players tr[data-rid]')].find(r => r.getBoundingClientRect().bottom > 60);
+  return el ? { rid: el.dataset.rid, top: el.getBoundingClientRect().top } : null;
+}
 function render() {
+  const anc = S && document.querySelector('#players tbody tr') ? anchorNow() : null;
+  paint();
+  if (anc) {
+    const el = document.querySelector(`[data-rid="${anc.rid}"]`);
+    if (el) { const d = el.getBoundingClientRect().top - anc.top; if (Math.abs(d) >= 1) window.scrollBy(0, d); }
+  }
+  clickAnchor = null;
+  if (focusNext) { document.querySelector(focusNext)?.focus({ preventScroll: true }); focusNext = null; }
+  for (const pd of pending.values()) pd.fresh = false;
+}
+function paint() {
   document.body.classList.toggle('guest', !S.you?.admin);
   if (!S.you?.admin && ['score', 'val', 'good', 'maxb', 'rank'].includes(sortKey)) { sortKey = 'proj'; sortDir = -1; }
   $('#you').textContent = S.you ? `👤 ${S.you.name}${S.you.admin ? '' : ' (guest)'}` : '';
@@ -451,7 +473,7 @@ function render() {
   // Player table.
   const q = searchQ(), fpos = $('#fpos').value, fteam = ft.value;
   let rows = A.rows.filter(r => {
-    if (r.pick && $('#fhidedrafted').checked && !q && !pending.has(r.id)) return false;
+    if (r.pick && $('#fhidedrafted').checked && !q && !pending.has(r.id) && undraftArm !== r.id) return false;
     if (q && !matches(r, q)) return false;
     if (fpos) {
       const pos = (r.pos || '').toUpperCase();
@@ -487,7 +509,7 @@ function render() {
       r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
-    return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
+    return `<tr data-rid="players-${r.id}" class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
       <td class="l own admin-only">${ownCell(r, canPick)}</td>
       <td class="admin-only">${r.rank ?? ''}</td>
       <td class="l name">${nameLink(r)}${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
@@ -508,13 +530,13 @@ function render() {
   if (!done && S.you?.admin && !searchQ()) {
     const myMax = auction() ? money(S.me).max : Infinity;
     const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
-    const best = A.rows.filter(r => pending.has(r.id));
+    const best = A.rows.filter(r => pending.get(r.id)?.where === 'recs' || (undraftArm === r.id && r.pick && lastWhere === 'recs'));
     best.push(...avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5));
     for (const r of avail) if (r.tag === 'target' && !best.includes(r)) best.push(r);
     const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
     $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
-      <div class="tablewrap"><table><thead><tr><th class="l">Drafted</th><th class="l">Player</th><th colspan="4"></th></tr></thead><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
+      <div class="tablewrap"><table><thead><tr><th class="l">Drafted</th><th class="l">Player</th><th colspan="4"></th></tr></thead><tbody>${best.map(r => `<tr data-rid="recs-${r.id}" class="${r.tag === 'target' ? 'target' : ''}">
         <td class="l own">${ownCell(r, true, true)}</td>
         <td class="l name">${nameLink(r)} <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
         <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
@@ -555,7 +577,6 @@ function render() {
   $('#boardgrid').innerHTML = html;
 
   renderSetup();
-  if (focusNext) { document.querySelector(focusNext)?.focus(); focusNext = null; }
 }
 
 // The Drafted cell: tick box, then either Mine, the pending "drafted by" fields, or who bought him.
@@ -587,7 +608,7 @@ function pendingRow(r, cols, where) {
 function pendingBox(r, where) {
   const pd = pending.get(r.id);
   if (!pd || pd.where !== where) return '';
-  return `<div class="editor pend" data-pd="${r.id}">
+  return `<div class="editor pend ${pd.fresh ? 'fold' : ''}" data-pd="${r.id}">
     <div class="edline"><b>${esc(r.name)}</b> drafted</div>
     <div class="edline">
       <label>Owner <select data-pf="mgr" data-pid="${r.id}"><option value="">Choose pool team…</option>${S.managers.map((m, i) => `<option value="${i}" ${String(i) === pd.mgr ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
@@ -685,18 +706,22 @@ $('#s-addmgr').onclick = () => { mgrs.push(`Team ${mgrs.length + 1}`); drawMgrs(
 // Events.
 $('#board').addEventListener('click', async e => {
   const t = e.target;
+  const row = t.closest('tr[data-rid]') || t.closest('tr.editrow')?.previousElementSibling;
+  if (row?.dataset?.rid) clickAnchor = row.dataset.rid;
+  if (t.dataset.gone || t.dataset.pencil) lastWhere = whereOf(t);
   try {
     if (t.dataset.gone) {
       const id = +t.dataset.gone;
-      if (t.checked) { const where = whereOf(t); pending.set(id, { mgr: '', price: '', where }); focusNext = `#${where} [data-pd="${id}"] [data-pf=mgr]`; await api('pick', { playerId: id, manager: -1 }); }
-      else { t.checked = true; undraftArm = id; pending.delete(id); render(); }
+      if (t.checked) { const where = whereOf(t); pending.set(id, { mgr: '', price: '', where, fresh: true }); focusNext = `#${where} [data-pd="${id}"] [data-pf=mgr]`; await api('pick', { playerId: id, manager: -1 }); }
+      else if (pending.has(id)) { pending.delete(id); await api('unpick', { playerId: id }); }  // changed their mind: never drafted
+      else { t.checked = true; undraftArm = id; render(); }
     }
     else if (t.dataset.act === 'pskip') { pending.delete(+t.dataset.pid); render(); }
     else if (t.dataset.pencil) {
       const id = +t.dataset.pencil, k = S.picks.find(k => k.playerId === id);
       const where = whereOf(t);
       if (pending.get(id)?.where === where) pending.delete(id);
-      else { pending.set(id, { mgr: k && k.manager >= 0 ? String(k.manager) : '', price: k?.price || '', saved: true, where });
+      else { pending.set(id, { mgr: k && k.manager >= 0 ? String(k.manager) : '', price: k?.price || '', saved: true, where, fresh: true });
         focusNext = `#${where} [data-pd="${id}"] [data-pf=mgr]`; }
       render();
     }
@@ -732,6 +757,8 @@ $('#board').addEventListener('input', e => {
 $('#board').addEventListener('change', async e => {
   const t = e.target;
   if (!t.dataset.pf) return;
+  const row = t.closest('tr.editrow')?.previousElementSibling;
+  if (row?.dataset?.rid) clickAnchor = row.dataset.rid;
   const id = +t.dataset.pid, pd = pending.get(id);
   if (!pd) return;
   pd[t.dataset.pf] = t.value;
