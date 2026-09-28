@@ -63,6 +63,8 @@ body.guest .admin-only { display: none !important; }
 .mgrlist li > div { display: flex; gap: 6px; align-items: center; }
 .mgrlist input { flex: 1; min-width: 0; max-width: 260px; }
 .mgrlist button { padding: 4px 10px; }
+td.own { white-space: nowrap; }
+td.own input { vertical-align: middle; width: 18px; height: 18px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
 .t-target { background: #c9950033; color: #9a6f00; }
 .t-avoid { background: #b3261e22; color: var(--bad); }
@@ -138,7 +140,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <div class="tablewrap">
       <table id="players">
         <thead><tr>
-          <th class="admin-only" title="Tick when a player is drafted by anyone">✓</th>
+          <th class="l admin-only" title="✓ = drafted by anyone. Mine = I bought him.">Drafted</th>
           <th data-k="rank" class="admin-only">#</th>
           <th class="l" data-k="name">Player</th>
           <th class="l" data-k="team">Team</th>
@@ -152,7 +154,6 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
           <th data-k="val" class="auc admin-only" title="Fair auction price for you right now: the room's remaining money split by points above replacement. Updates after every sale.">Value</th>
           <th data-k="good" class="auc hide-sm admin-only" title="A bargain at or below this">Good ≤</th>
           <th data-k="maxb" class="auc admin-only" title="Walk away above this (value +15%; +30% for your targets), capped at what you can bid">Max</th>
-          <th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -473,15 +474,15 @@ function render() {
     const pickInfo = r.pick ? `<span class="muted">${esc(buyer(r.pick))}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
       `<button class="small primary admin-only" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
-      <td class="admin-only"><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted"></td>
+      <td class="l own admin-only"><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted by anyone"> ${pickInfo}</td>
       <td class="admin-only">${r.rank ?? ''}</td>
       <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.why || r.note ? `<div class="note">${r.why ? `<b>${esc(r.why)}</b>${r.note ? ' · ' : ''}` : ''}${esc(r.note)}</div>` : ''}</td>
       <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
       <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score admin-only">${r.score.toFixed(1)}</td>
       ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
-      <td>${pickInfo}</td></tr>`;
-  }).join('') || `<tr><td colspan="15" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
+      </tr>`;
+  }).join('') || `<tr><td colspan="14" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
   $('#addplayer').style.display = S.you?.admin && qRaw.length >= 4 && !rows.length ? '' : 'none';
@@ -499,11 +500,11 @@ function render() {
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
     $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
       <div class="tablewrap"><table><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
-        <td><input type="checkbox" class="gone" data-gone="${r.id}" title="Drafted"></td>
+        <td class="own"><input type="checkbox" class="gone" data-gone="${r.id}" title="Drafted by anyone"> <button class="small primary" data-mine="${r.id}" title="I bought him">Mine</button></td>
         <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a> <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
         <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
-        ${auction() ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb">max $${r.maxb}</td>` : ''}
-        <td class="hide-sm"><button class="small primary" data-mine="${r.id}">Mine</button></td></tr>`).join('')}</tbody></table></div>`;
+        ${auction() ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb" title="Max bid"><span class="hide-sm">max </span>≤$${r.maxb}</td>` : ''}
+        </tr>`).join('')}</tbody></table></div>`;
   } else $('#recs').innerHTML = '';
 
   // My team.
