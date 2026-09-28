@@ -93,8 +93,14 @@ The page follows the platform UI standard (`clodemode/about-lore`, SCOUT):
 `alert()`. Panels expand inline next to what was clicked, and every
 expanded panel collapses again.
 
-- Tick a player: **Drafted by** (a pool team) and a price appear right in
-  the row. **Save** records them; **Skip** leaves the buyer unrecorded.
+- Tick **Drafted**: a details row opens directly below the player, with
+  **Owner** (a pool team) and **Amount**. Both save as soon as they're
+  chosen or entered; **Dismiss** closes the row, and the player stays
+  drafted.
+- Fix a mistake with the **✎** on a drafted player: in the list (with
+  Hide drafted off), in Recent picks, or by clicking him on the draft
+  board. The same details open where you clicked.
+- Unticking asks "Undraft …? Yes, undraft / Cancel" below the row first.
 - Click a name: an editor opens under the row (buyer, price, flag,
   injury, notes). Click the name again, press Close, or press Esc to
   close it.

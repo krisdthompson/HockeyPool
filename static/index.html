@@ -90,6 +90,7 @@ td.maxb { font-weight: 700; }
 .board { font-size: 12px; }
 .board td, .board th { text-align: left; white-space: nowrap; }
 .board td.me, .board th.me { background: var(--mine); }
+.board a[data-pencil] { cursor: pointer; color: inherit; }
 .board td.next { outline: 2px solid var(--accent); outline-offset: -2px; }
 .picks { max-height: 260px; overflow-y: auto; font-size: 13px; }
 .picks div { padding: 3px 0; border-bottom: 1px solid var(--line); }
@@ -105,6 +106,8 @@ tr.editrow > td { background: var(--chip); padding: 10px 12px; text-align: left;
 .editor label { display: inline-flex; gap: 6px; align-items: center; }
 .editor input[type=text] { min-width: 180px; }
 .editor .val { font-weight: 600; }
+#boardedit .editor, #recent .editor { margin: 6px 0 8px; background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+button.pencil { padding: 0 6px; }
 td.own .pend { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 4px; }
 td.own .pend select { max-width: 140px; }
 td.own .pend input { width: 64px; height: auto; }
@@ -195,9 +198,10 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
       <div class="picks" id="recent"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="boardsec">
       <h2>Draft board</h2>
       <div class="tablewrap"><table class="board" id="boardgrid"></table></div>
+      <div id="boardedit"></div>
     </section>
     <details class="panel weights admin-only" id="weights">
       <summary>Ranking weights</summary>
@@ -308,7 +312,7 @@ function onClock(pick) {
 const totalPicks = () => S.managers.length * S.rosterSize;
 
 const auction = () => S.budget > 0;
-const buyer = k => k.manager >= 0 ? S.managers[k.manager] : 'drafted';
+const buyer = k => k.manager >= 0 ? S.managers[k.manager] : 'no owner';
 const minBid = () => Math.max(1, S.minBid || 1);
 function money(m) {
   const mine = S.picks.filter(k => k.manager === m);
@@ -491,7 +495,7 @@ function render() {
       <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
       <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td>
       ${auction() ? (r.pick ? '<td class="auc admin-only"></td><td class="auc hide-sm admin-only"></td><td class="auc admin-only"></td>' : `<td class="auc admin-only">$${Math.round(r.val)}</td><td class="auc hide-sm good admin-only">$${r.good}</td><td class="auc maxb admin-only">$${r.maxb}</td>`) : ''}
-      </tr>${editorRow(r, 13)}`;
+      </tr>${undraftRow(r, 13)}${pendingRow(r, 13, 'players')}${editorRow(r, 13)}`;
   }).join('') || `<tr><td colspan="13" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
@@ -510,12 +514,12 @@ function render() {
     const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
     $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
-      <div class="tablewrap"><table><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
-        <td class="l own">${ownCell(r, true)}</td>
+      <div class="tablewrap"><table><thead><tr><th class="l">Drafted</th><th class="l">Player</th><th colspan="4"></th></tr></thead><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
+        <td class="l own">${ownCell(r, true, true)}</td>
         <td class="l name">${nameLink(r)} <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
         <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
         ${auction() && !r.pick ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb" title="Max bid"><span class="hide-sm">max </span>≤$${r.maxb}</td>` : '<td colspan="3"></td>'}
-        </tr>${editorRow(r, 6)}`).join('')}</tbody></table></div>`;
+        </tr>${undraftRow(r, 6)}${pendingRow(r, 6, 'recs')}${editorRow(r, 6)}`).join('')}</tbody></table></div>`;
   } else $('#recs').innerHTML = '';
 
   // My team.
@@ -529,13 +533,14 @@ function render() {
   // Recent picks.
   $('#recent').innerHTML = S.picks.slice().reverse().map(k => {
     const p = A.byId.get(k.playerId);
-    return `<div><b>#${k.overall}</b> ${esc(buyer(k))}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span>${k.price ? ` <b>$${k.price}</b>` : ''}</div>`;
+    return `<div><b>#${k.overall}</b> ${esc(buyer(k))}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span>${k.price ? ` <b>$${k.price}</b>` : ''}${S.you?.admin ? ' ' + pencil(k.playerId) : ''}${p ? pendingBox(p, 'recent') : ''}</div>`;
   }).join('') || '<div class="muted">None yet</div>';
   $('#undo').disabled = !S.picks.length;
 
   // Board grid: rows = rounds, columns = managers.
   const grid = S.managers.map(() => []);
   for (const k of S.picks) { const p = A.byId.get(k.playerId); if (p) grid[k.manager]?.push({ ...p, price: k.price }); }
+  $('#boardedit').innerHTML = S.picks.map(k => A.byId.get(k.playerId)).filter(Boolean).map(p => pendingBox(p, 'boardsec')).join('');
   let html = '<tr><th>Rd</th>' + S.managers.map((m, i) => `<th class="${i === S.me ? 'me' : ''}">${esc(m)}</th>`).join('') + '</tr>';
   if (auction()) html += '<tr><td class="muted">$ left / max</td>' + S.managers.map((m, i) => { const mm = money(i); return `<td class="${i === S.me ? 'me' : ''}">$${mm.left} / $${mm.max}</td>`; }).join('') + '</tr>';
   for (let r = 0; r < S.rosterSize; r++) {
@@ -543,7 +548,8 @@ function render() {
       const p = grid[i][r];
       const isNext = !done && who === i && grid[i].length === r;
       const isNextCell = !auction() && isNext;
-      return `<td class="${i === S.me ? 'me' : ''} ${isNextCell ? 'next' : ''}" title="${esc(p ? p.name + ' ' + p.team : '')}">${p ? esc(p.name.split(' ').slice(-1)[0]) + ` <span class="muted">${esc(p.team)}${p.price ? ' $' + p.price : ''}</span>` : ''}</td>`;
+      const label = p ? esc(p.name.split(' ').slice(-1)[0]) + ` <span class="muted">${esc(p.team)}${p.price ? ' $' + p.price : ''}</span>` : '';
+      return `<td class="${i === S.me ? 'me' : ''} ${isNextCell ? 'next' : ''}" title="${esc(p ? p.name + ' ' + p.team : '')}">${p && S.you?.admin ? `<a data-pencil="${p.id}" role="button" tabindex="0" title="Edit owner and amount">${label} ✎</a>` : label}</td>`;
     }).join('') + '</tr>';
   }
   $('#boardgrid').innerHTML = html;
@@ -553,15 +559,43 @@ function render() {
 }
 
 // The Drafted cell: tick box, then either Mine, the pending "drafted by" fields, or who bought him.
-function ownCell(r, canPick) {
+function ownCell(r, canPick, inRecs = false) {
   const box = `<input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted by anyone" aria-label="Drafted">`;
   if (!r.pick) return `${box} <button class="small primary" data-mine="${r.id}" title="I bought him" ${canPick ? '' : 'disabled'}>Mine</button>`;
+  if (pending.get(r.id)?.where === (inRecs ? 'recs' : 'players') || undraftArm === r.id) return `${box} <span class="muted">see below</span>`;
+  return `${box} <span class="muted">${r.pick.manager >= 0 ? esc(S.managers[r.pick.manager]) : 'no owner'}${r.pick.price ? ' $' + r.pick.price : ''}</span> ${pencil(r.id)}`;
+}
+const pencil = id => `<button class="small pencil" data-pencil="${id}" title="Edit owner and amount" aria-label="Edit owner and amount">✎</button>`;
+
+// Unticking asks first, in a row below the player.
+let undraftArm = null;
+function undraftRow(r, cols) {
+  if (undraftArm !== r.id) return '';
+  return `<tr class="editrow"><td colspan="${cols}"><div class="editor undraft" data-ud="${r.id}">
+    Undraft <b>${esc(r.name)}</b>? He goes back on the board.
+    <button class="danger" data-act="udyes" data-pid="${r.id}">Yes, undraft</button>
+    <button data-act="udno">Cancel</button></div></td></tr>`;
+}
+
+// Ticking a player opens this details row directly below him: owner, amount, Save, Dismiss.
+// A details panel shows only where it was opened (list, Best buys, Recent picks or the draft board).
+const whereOf = el => el.closest('#recs, #players, #recent, #boardsec')?.id || 'players';
+function pendingRow(r, cols, where) {
+  const box = pendingBox(r, where);
+  return box && `<tr class="editrow"><td colspan="${cols}">${box}</td></tr>`;
+}
+function pendingBox(r, where) {
   const pd = pending.get(r.id);
-  if (pd) return `${box}<span class="pend">
-    <select data-pf="mgr" data-pid="${r.id}" aria-label="Drafted by"><option value="">Drafted by…</option>${S.managers.map((m, i) => `<option value="${i}" ${String(i) === pd.mgr ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
-    ${auction() ? `<input type="number" data-pf="price" data-pid="${r.id}" min="0" placeholder="$" value="${esc(pd.price)}" aria-label="Price">` : ''}
-    <button class="small primary" data-act="psave" data-pid="${r.id}">Save</button><button class="small" data-act="pskip" data-pid="${r.id}">Skip</button></span>`;
-  return `${box} <span class="muted">${r.pick.manager >= 0 ? esc(S.managers[r.pick.manager]) : 'drafted'}${r.pick.price ? ' $' + r.pick.price : ''}</span>`;
+  if (!pd || pd.where !== where) return '';
+  return `<div class="editor pend" data-pd="${r.id}">
+    <div class="edline"><b>${esc(r.name)}</b> drafted</div>
+    <div class="edline">
+      <label>Owner <select data-pf="mgr" data-pid="${r.id}"><option value="">Choose pool team…</option>${S.managers.map((m, i) => `<option value="${i}" ${String(i) === pd.mgr ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
+      ${auction() ? `<label>Amount $ <input type="number" data-pf="price" data-pid="${r.id}" min="0" style="width:80px" value="${esc(pd.price)}"></label>` : ''}
+      <span class="muted" aria-live="polite">${pd.saved ? '✓ saved' : 'saves as you choose'}</span>
+      <button data-act="pskip" data-pid="${r.id}" title="Close these details; he stays drafted">Dismiss</button>
+    </div>
+  </div>`;
 }
 
 function nameLink(r) {
@@ -577,8 +611,8 @@ function editorRow(r, cols) {
   return `<tr class="editrow"><td colspan="${cols}"><div class="editor" id="ed-${r.id}">
     ${auction() && !r.pick ? `<div class="val">Value $${Math.round(r.val)} · good buy ≤ $${r.good} · max $${r.maxb}</div>` : ''}
     <div class="edline">
-      <label>Drafted by <select data-f="mgr">${opt(-1, 'Someone (not recorded)', ed.mgr)}${S.managers.map((m, i) => opt(i, esc(m), ed.mgr)).join('')}</select></label>
-      ${auction() ? `<label>Price $ <input type="number" data-f="price" min="0" style="width:80px" value="${esc(ed.price)}"></label>` : ''}
+      <label>Owner <select data-f="mgr">${opt(-1, 'Not recorded', ed.mgr)}${S.managers.map((m, i) => opt(i, esc(m), ed.mgr)).join('')}</select></label>
+      ${auction() ? `<label>Amount $ <input type="number" data-f="price" min="0" style="width:80px" value="${esc(ed.price)}"></label>` : ''}
       <button class="primary" data-act="savepick">${r.pick ? 'Update pick' : 'Record pick'}</button>
     </div>
     <div class="edline">
@@ -654,16 +688,20 @@ $('#board').addEventListener('click', async e => {
   try {
     if (t.dataset.gone) {
       const id = +t.dataset.gone;
-      if (t.checked) { pending.set(id, { mgr: '', price: '' }); focusNext = `${t.closest('#recs') ? '#recs' : '#players'} select[data-pf=mgr][data-pid="${id}"]`; await api('pick', { playerId: id, manager: -1 }); }
-      else { pending.delete(id); await api('unpick', { playerId: id }); toast('Back on the board'); }
-    }
-    else if (t.dataset.act === 'psave') {
-      const id = +t.dataset.pid, pd = pending.get(id);
-      if (pd.mgr === '') { toast('Choose who drafted him, or Skip'); return; }
-      await api('repick', { playerId: id, manager: +pd.mgr, price: +pd.price || 0 });
-      pending.delete(id); render(); toast('Saved');
+      if (t.checked) { const where = whereOf(t); pending.set(id, { mgr: '', price: '', where }); focusNext = `#${where} [data-pd="${id}"] [data-pf=mgr]`; await api('pick', { playerId: id, manager: -1 }); }
+      else { t.checked = true; undraftArm = id; pending.delete(id); render(); }
     }
     else if (t.dataset.act === 'pskip') { pending.delete(+t.dataset.pid); render(); }
+    else if (t.dataset.pencil) {
+      const id = +t.dataset.pencil, k = S.picks.find(k => k.playerId === id);
+      const where = whereOf(t);
+      if (pending.get(id)?.where === where) pending.delete(id);
+      else { pending.set(id, { mgr: k && k.manager >= 0 ? String(k.manager) : '', price: k?.price || '', saved: true, where });
+        focusNext = `#${where} [data-pd="${id}"] [data-pf=mgr]`; }
+      render();
+    }
+    else if (t.dataset.act === 'udyes') { const id = +t.dataset.pid; undraftArm = null; await api('unpick', { playerId: id }); toast('Back on the board'); }
+    else if (t.dataset.act === 'udno') { undraftArm = null; render(); }
     else if (t.dataset.act === 'close') { ed = null; render(); }
     else if (t.dataset.act === 'savepick') {
       const picked = S.picks.some(k => k.playerId === ed.id);
@@ -690,11 +728,25 @@ $('#board').addEventListener('input', e => {
   if (t.dataset.f && ed) ed[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
   if (t.dataset.pf) { const pd = pending.get(+t.dataset.pid); if (pd) pd[t.dataset.pf] = t.value; }
 });
+// Owner and Amount save themselves as soon as they're chosen or entered.
+$('#board').addEventListener('change', async e => {
+  const t = e.target;
+  if (!t.dataset.pf) return;
+  const id = +t.dataset.pid, pd = pending.get(id);
+  if (!pd) return;
+  pd[t.dataset.pf] = t.value;
+  const next = t.dataset.pf === 'mgr' && auction() ? `#${pd.where} [data-pd="${id}"] [data-pf=price]` : null;
+  try {
+    await api('repick', { playerId: id, manager: pd.mgr === '' ? -1 : +pd.mgr, price: +pd.price || 0 });
+    pd.saved = true;
+  } catch (err) { pd.saved = false; toast(err.message); }
+  focusNext = next; render();
+});
 $('#board').addEventListener('keydown', e => {
   const t = e.target;
-  if (e.key === 'Enter' && t.dataset.pf) { e.preventDefault(); $(`[data-act=psave][data-pid="${t.dataset.pid}"]`)?.click(); }
+  if (e.key === 'Enter' && t.dataset.pf) { e.preventDefault(); t.blur(); }
   if (e.key === 'Enter' && t.dataset.f === 'price') { e.preventDefault(); document.querySelector('[data-act=savepick]')?.click(); }
-  if (e.key === 'Enter' && t.dataset.edit) t.click();
+  if (e.key === 'Enter' && (t.dataset.edit || t.dataset.pencil)) t.click();
   if (e.key === 'Escape' && t.closest('.editor')) { ed = null; render(); }
 });
 ['#fminpts', '#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fhidedrafted'].forEach(s => $(s).addEventListener('input', render));

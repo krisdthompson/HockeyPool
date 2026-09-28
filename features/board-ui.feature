@@ -19,17 +19,49 @@ Feature: The draft board page
     When Kris collapses "Ranking weights"
     Then the weight sliders are hidden
 
-  Scenario: Ticking a player asks who drafted him, in the row
-    When Kris ticks "Connor McDavid"
-    Then a "Drafted by" pool-team choice appears in that row
-    When Kris chooses "Sniffer" and saves
-    Then the row shows "Sniffer"
+  Scenario: The first column is headed Drafted
+    Then the first column of the player list and of Best buys is headed "Drafted"
+
+  Scenario: Ticking Drafted opens the details below the player
+    When Kris ticks Drafted on "Connor McDavid"
+    Then a details row opens directly below his row
+    And it has an Owner choice of pool teams, an Amount and a Dismiss button
+    When Kris chooses owner "Sniffer"
+    Then the owner is saved without pressing a save button
+    When Kris enters an amount of $58
+    Then the amount is saved without pressing a save button
+    When Kris presses Dismiss
+    Then the details row closes
     And the player leaves the list because drafted players are hidden
 
-  Scenario: The drafted-by choice can be skipped
-    When Kris ticks "Connor McDavid"
-    And Kris skips choosing who drafted him
-    Then the player leaves the list
+  Scenario: Dismissing keeps him drafted without an owner
+    When Kris ticks Drafted on "Connor McDavid"
+    And Kris presses Dismiss
+    Then the details row closes
+    And "Connor McDavid" is drafted with no owner recorded
+
+  Scenario: A drafted player's owner and amount can be corrected
+    Given "Connor McDavid" was drafted by "Sniffer" for $58
+    When Kris presses the pencil next to him
+    Then the details row opens below him showing "Sniffer" and $58
+    When Kris changes the owner to "Toad"
+    Then the change is saved automatically
+
+  Scenario: Editing a drafted player from the draft board
+    Given "Connor McDavid" was drafted by "Sniffer" for $58
+    When Kris clicks him on the draft board
+    Then the details open under the draft board showing "Sniffer" and $58
+    When Kris changes the amount to $60
+    Then the change is saved automatically
+
+  Scenario: Undrafting by unticking asks first
+    Given "Connor McDavid" is drafted
+    When Kris unticks Drafted on "Connor McDavid"
+    Then he stays drafted and "Undraft Connor McDavid?" appears below his row
+    When Kris presses Cancel
+    Then he is still drafted
+    When Kris unticks him again and presses "Yes, undraft"
+    Then he is back on the board
 
   Scenario: Clicking a name opens an editor under the row, and closes it again
     When Kris clicks "Mark Stone"
