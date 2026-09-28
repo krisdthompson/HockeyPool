@@ -64,6 +64,7 @@ body.guest .admin-only { display: none !important; }
 .mgrlist input { flex: 1; min-width: 0; max-width: 260px; }
 .mgrlist button { padding: 4px 10px; }
 td.own { white-space: nowrap; }
+a.who { color: var(--accent); cursor: pointer; text-decoration: underline dotted; font-size: 13px; }
 td.own input { vertical-align: middle; width: 18px; height: 18px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
 .t-target { background: #c9950033; color: #9a6f00; }
@@ -252,7 +253,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
       <button value="cancel">Cancel</button>
     </div>
     <hr style="border:0;border-top:1px solid var(--line)">
-    <label>Record as drafted by <select id="e-mgr"></select></label>
+    <label>Drafted by (pool team) <select id="e-mgr"></select></label>
     <label id="e-pricewrap">Price $ <input type="number" id="e-price" min="1"></label>
     <button value="draft" id="e-draft">Record pick</button>
   </form>
@@ -470,7 +471,7 @@ function render() {
       r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
-    const pickInfo = r.pick ? `<span class="muted">${esc(buyer(r.pick))}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
+    const pickInfo = r.pick ? `<a class="who" data-edit="${r.id}" title="Set who drafted him and the price">${r.pick.manager >= 0 ? esc(S.managers[r.pick.manager]) : 'who?'}${r.pick.price ? ' $' + r.pick.price : ''}</a>` :
       `<button class="small primary admin-only" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
       <td class="l own admin-only"><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted by anyone"> ${pickInfo}</td>
@@ -621,6 +622,7 @@ for (const k of Object.keys(W_DEFAULT)) {
   });
 }
 
+let editPicked = false;
 function openEdit(id, winner) {
   const p = S.players.find(p => p.id === id);
   editId = id;
@@ -634,12 +636,15 @@ function openEdit(id, winner) {
   $('#e-miss').value = p.miss || 0;
   $('#e-note').value = p.note;
   $('#e-why').value = p.why || '';
-  const drafted = S.picks.some(k => k.playerId === id);
+  const pick = S.picks.find(k => k.playerId === id);
+  editPicked = !!pick;
   $('#e-mgr').innerHTML = '<option value="-1">Someone (not recorded)</option>' + S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
-  if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? (auction() ? -1 : onClock(S.picks.length));
-  $('#e-draft').disabled = drafted || S.picks.length >= totalPicks();
+  if (pick) $('#e-mgr').value = pick.manager;
+  else if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? (auction() ? -1 : onClock(S.picks.length));
+  $('#e-draft').textContent = pick ? 'Update pick' : 'Record pick';
+  $('#e-draft').disabled = !pick && S.picks.length >= totalPicks();
   $('#e-pricewrap').style.display = auction() ? '' : 'none';
-  $('#e-price').value = '';
+  $('#e-price').value = pick?.price || '';
   $('#e-price').min = minBid();
   $('#edit').showModal();
   if (auction() && winner !== undefined) $('#e-price').focus();
@@ -653,8 +658,8 @@ $('#edit').addEventListener('close', async () => {
       await api('player', { id: editId, tag: $('#e-tag').value, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value, why: $('#e-why').value });
       toast('Player updated');
     } else if (v === 'draft') {
-      await api('pick', { playerId: editId, manager: +$('#e-mgr').value, price: +$('#e-price').value || 0 });
-      toast('Pick recorded');
+      await api(editPicked ? 'repick' : 'pick', { playerId: editId, manager: +$('#e-mgr').value, price: +$('#e-price').value || 0 });
+      toast(editPicked ? 'Pick updated' : 'Pick recorded');
     }
   } catch (e) { toast(e.message); }
 });

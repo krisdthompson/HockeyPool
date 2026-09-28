@@ -363,6 +363,30 @@ func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added in
 	return updated, added
 }
 
+// checkBuy validates manager m buying one more player at price and
+// returns the price to record (0 outside auctions).
+func checkBuy(s *State, m, price int) (int, error) {
+	n := 0
+	for _, k := range s.Picks {
+		if k.Manager == m {
+			n++
+		}
+	}
+	if n >= s.RosterSize {
+		return 0, fmt.Errorf("%s already has %d players", s.Managers[m], n)
+	}
+	if s.Budget == 0 {
+		return 0, nil
+	}
+	if price < minBid(s) {
+		return 0, fmt.Errorf("auction: price must be at least $%d", minBid(s))
+	}
+	if mb := maxBid(s, m); price > mb {
+		return 0, fmt.Errorf("%s can bid at most $%d", s.Managers[m], mb)
+	}
+	return price, nil
+}
+
 func minBid(s *State) int {
 	return max(1, s.MinBid)
 }
@@ -619,26 +643,33 @@ func (sv *server) routes() http.Handler {
 			s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: Gone, Price: max(0, req.Price), At: time.Now()})
 			return nil
 		}
-		n := 0
-		for _, k := range s.Picks {
-			if k.Manager == m {
-				n++
-			}
-		}
-		if n >= s.RosterSize {
-			return fmt.Errorf("%s already has %d players", s.Managers[m], n)
-		}
-		price := 0
-		if s.Budget > 0 {
-			price = req.Price
-			if price < minBid(s) {
-				return fmt.Errorf("auction: price must be at least $%d", minBid(s))
-			}
-			if mb := maxBid(s, m); price > mb {
-				return fmt.Errorf("%s can bid at most $%d", s.Managers[m], mb)
-			}
+		price, err := checkBuy(s, m, req.Price)
+		if err != nil {
+			return err
 		}
 		s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: m, Price: price, At: time.Now()})
+		return nil
+	}))
+
+	// Change who bought an already-drafted player, and for how much.
+	mux.HandleFunc("POST /api/repick", mutate(sv, func(s *State, req pickReq, _ user) error {
+		i := slices.IndexFunc(s.Picks, func(k Pick) bool { return k.PlayerID == req.PlayerID })
+		if i < 0 {
+			return errors.New("player isn't drafted")
+		}
+		if req.Manager == nil || *req.Manager < Gone || *req.Manager >= len(s.Managers) {
+			return errors.New("unknown manager")
+		}
+		m, price := *req.Manager, max(0, req.Price)
+		if m != Gone {
+			others := *s
+			others.Picks = slices.Delete(slices.Clone(s.Picks), i, i+1)
+			var err error
+			if price, err = checkBuy(&others, m, req.Price); err != nil {
+				return err
+			}
+		}
+		s.Picks[i].Manager, s.Picks[i].Price = m, price
 		return nil
 	}))
 

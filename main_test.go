@@ -259,3 +259,29 @@ func TestReorderKeepsPicks(t *testing.T) {
 		t.Fatal("removing a team with picks allowed")
 	}
 }
+
+func TestRepick(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	h := (&server{st: st}).routes()
+	do := func(path, body string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		return w.Code
+	}
+	do("/api/import", `{"text":"Name\nA\nB"}`)
+	do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":7,"budget":100,"minBid":4}`)
+	do("/api/pick", `{"playerId":1,"manager":-1}`)
+	if c := do("/api/repick", `{"playerId":1,"manager":1,"price":3}`); c != 400 {
+		t.Fatal("repick under minimum allowed")
+	}
+	if c := do("/api/repick", `{"playerId":1,"manager":1,"price":30}`); c != 200 {
+		t.Fatal("repick", c)
+	}
+	if p := st.get().Picks[0]; p.Manager != 1 || p.Price != 30 {
+		t.Fatalf("repick result %+v", p)
+	}
+	// Re-pricing the same buy doesn't count the old price against the budget.
+	if c := do("/api/repick", `{"playerId":1,"manager":1,"price":76}`); c != 200 {
+		t.Fatal("re-price to max", c)
+	}
+}
