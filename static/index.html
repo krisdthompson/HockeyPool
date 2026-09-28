@@ -49,6 +49,11 @@ td.name a { color: inherit; text-decoration: none; font-weight: 600; cursor: poi
 tr.stack td { background: var(--mine); }
 tr.likelygone td.name a { color: var(--bad); }
 .tag { display: inline-block; font-size: 11px; padding: 0 5px; border-radius: 4px; margin-left: 4px; font-weight: 600; vertical-align: 1px; }
+#recs { margin-bottom: 12px; }
+#recs h2 { margin: 0 0 6px; font-size: 14px; }
+#recs table { font-size: 14px; }
+#recs td { padding: 6px; }
+#recs .why { font-size: 12px; color: var(--muted); }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
 .t-target { background: #c9950033; color: #9a6f00; }
 .t-avoid { background: #b3261e22; color: var(--bad); }
@@ -104,6 +109,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 
 <main id="board">
   <section class="panel">
+    <div id="recs"></div>
     <div class="filters">
       <input type="search" id="q" placeholder="Search player or team">
       <select id="fpos"><option value="">All pos</option><option>C</option><option>LW</option><option>RW</option><option>F</option><option>D</option><option>G</option></select>
@@ -118,6 +124,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <div class="tablewrap">
       <table id="players">
         <thead><tr>
+          <th title="Tick when a player is drafted by anyone">✓</th>
           <th data-k="rank">#</th>
           <th class="l" data-k="name">Player</th>
           <th class="l" data-k="team">Team</th>
@@ -270,6 +277,7 @@ function onClock(pick) {
 const totalPicks = () => S.managers.length * S.rosterSize;
 
 const auction = () => S.budget > 0;
+const buyer = k => k.manager >= 0 ? S.managers[k.manager] : 'drafted';
 const minBid = () => Math.max(1, S.minBid || 1);
 function money(m) {
   const mine = S.picks.filter(k => k.manager === m);
@@ -336,14 +344,22 @@ function analyse() {
     // Auction value: money left in the room, beyond the minimum bid for every
     // open spot, split by points above the best player who won't get bought.
     const mb = minBid();
-    let slots = 0, cash = 0;
-    S.managers.forEach((m, i) => { const mm = money(i); const open = S.rosterSize - mm.n; if (open > 0) { slots += open; cash += mm.left; } });
-    const repl = byScore[slots]?.score ?? 0;
-    const surplus = byScore.slice(0, slots).reduce((t, r) => t + Math.max(0, r.score - repl), 0);
-    const extra = Math.max(0, cash - mb * slots);
+    const price = (list, slots, cash) => {
+      const repl = list[slots]?.score ?? 0;
+      const surplus = list.slice(0, slots).reduce((t, r) => t + Math.max(0, r.score - repl), 0);
+      const extra = Math.max(0, cash - mb * slots);
+      return r => r.score > repl && surplus > 0 ? mb + (r.score - repl) / surplus * extra : mb;
+    };
+    // Players ticked off without a price are assumed to have gone for their
+    // pre-auction value.
+    const all = [...rows].sort((a, b) => b.score - a.score);
+    const preValue = price(all, totalPicks(), S.managers.length * S.budget);
+    let cash = S.managers.length * S.budget;
+    for (const k of S.picks) cash -= k.price || preValue(rows.find(r => r.id === k.playerId) || { score: 0 });
+    const value = price(byScore, Math.max(0, totalPicks() - S.picks.length), cash);
     const myMax = money(S.me).max;
     for (const r of byScore) {
-      r.val = r.score > repl && surplus > 0 ? mb + (r.score - repl) / surplus * extra : mb;
+      r.val = value(r);
       r.good = Math.max(mb, Math.floor(r.val * 0.85));
       r.maxb = Math.min(myMax, Math.max(mb, Math.ceil(r.val * (r.tag === 'target' ? 1.3 : 1.15))));
     }
@@ -413,9 +429,10 @@ function render() {
       r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
       r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
     ].join('');
-    const pickInfo = r.pick ? `<span class="muted">#${r.pick.overall} ${esc(S.managers[r.pick.manager])}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
-      `<button class="small primary" data-draft="${r.id}" ${canPick ? '' : 'disabled'}>Draft</button> <button class="small" data-mine="${r.id}" title="Record as my pick" ${canPick ? '' : 'disabled'}>Mine</button>`;
+    const pickInfo = r.pick ? `<span class="muted">${esc(buyer(r.pick))}${r.pick.price ? ' $' + r.pick.price : ''}</span>` :
+      `<button class="small primary" data-mine="${r.id}" title="I bought him: record him (and the price) on my team" ${canPick ? '' : 'disabled'}>Mine</button>`;
     return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''} ${r.tag === 'target' && !r.pick ? 'target' : ''} ${r.tag === 'avoid' ? 'avoid' : ''}">
+      <td><input type="checkbox" class="gone" data-gone="${r.id}" ${r.pick ? 'checked' : ''} ${!r.pick && !canPick ? 'disabled' : ''} title="Drafted"></td>
       <td>${r.rank ?? ''}</td>
       <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}</td>
       <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
@@ -423,13 +440,30 @@ function render() {
       <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score">${r.score.toFixed(1)}</td>
       ${auction() ? (r.pick ? '<td class="auc"></td><td class="auc hide-sm"></td><td class="auc"></td>' : `<td class="auc">$${Math.round(r.val)}</td><td class="auc hide-sm good">$${r.good}</td><td class="auc maxb">$${r.maxb}</td>`) : ''}
       <td>${pickInfo}</td></tr>`;
-  }).join('') || `<tr><td colspan="14" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
+  }).join('') || `<tr><td colspan="15" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
   document.querySelectorAll('#players .auc').forEach(el => el.style.display = auction() ? '' : 'none');
   const qRaw = $('#q').value.trim();
   $('#addplayer').style.display = qRaw.length > 3 && !S.players.some(p => p.name.toLowerCase() === qRaw.toLowerCase()) ? '' : 'none';
   $('#addplayer').textContent = `+ Add "${qRaw}" as a player`;
   $('#count').textContent = `${rows.length} shown${rows.length > shown.length ? ` (first ${shown.length})` : ''} · ${S.players.length - S.picks.length} available of ${S.players.length}`;
   document.querySelectorAll('#players th').forEach(th => th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.k === sortKey ? (sortDir < 0 ? ' ▼' : ' ▲') : ''));
+
+  // Best buys: the top of the ranking you can still afford, plus any targets.
+  if (!done) {
+    const myMax = auction() ? money(S.me).max : Infinity;
+    const avail = A.rows.filter(r => !r.pick && r.rank).sort((a, b) => a.rank - b.rank);
+    const best = avail.filter(r => r.tag !== 'avoid' && (!auction() || r.good <= myMax)).slice(0, 5);
+    for (const r of avail) if (r.tag === 'target' && !best.includes(r)) best.push(r);
+    const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
+      r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
+    $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
+      <div class="tablewrap"><table><tbody>${best.map(r => `<tr class="${r.tag === 'target' ? 'target' : ''}">
+        <td><input type="checkbox" class="gone" data-gone="${r.id}" title="Drafted"></td>
+        <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a> <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
+        <td class="hide-sm" title="Projected points">${r.projv.toFixed(0)} pts</td>
+        ${auction() ? `<td><span class="hide-sm">value </span><b>$${Math.round(r.val)}</b></td><td class="good hide-sm">good ≤ $${r.good}</td><td class="maxb">max $${r.maxb}</td>` : ''}
+        <td class="hide-sm"><button class="small primary" data-mine="${r.id}">Mine</button></td></tr>`).join('')}</tbody></table></div>`;
+  } else $('#recs').innerHTML = '';
 
   // My team.
   $('#mytitle').textContent = `${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})` + (auction() ? ` · $${money(S.me).left} left` : '');
@@ -442,7 +476,7 @@ function render() {
   // Recent picks.
   $('#recent').innerHTML = S.picks.slice().reverse().map(k => {
     const p = A.byId.get(k.playerId);
-    return `<div><b>#${k.overall}</b> ${esc(S.managers[k.manager])}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span>${k.price ? ` <b>$${k.price}</b>` : ''}</div>`;
+    return `<div><b>#${k.overall}</b> ${esc(buyer(k))}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span>${k.price ? ` <b>$${k.price}</b>` : ''}</div>`;
   }).join('') || '<div class="muted">None yet</div>';
   $('#undo').disabled = !S.picks.length;
 
@@ -483,11 +517,14 @@ function fillMe(names, sel) {
 $('#s-managers').addEventListener('input', () => fillMe($('#s-managers').value.split('\n').map(s => s.trim()).filter(Boolean), +$('#s-me').value));
 
 // Events.
-$('#players').addEventListener('click', async e => {
+$('#board').addEventListener('click', async e => {
   const t = e.target;
   try {
-    if (auction() && (t.dataset.draft || t.dataset.mine)) openEdit(+(t.dataset.draft || t.dataset.mine), t.dataset.mine ? S.me : null);
-    else if (t.dataset.draft) { await api('pick', { playerId: +t.dataset.draft }); toast('Pick recorded'); }
+    if (t.dataset.gone) {
+      if (t.checked) { await api('pick', { playerId: +t.dataset.gone, manager: -1 }); toast('Marked drafted'); }
+      else { await api('unpick', { playerId: +t.dataset.gone }); toast('Back on the board'); }
+    }
+    else if (auction() && t.dataset.mine) openEdit(+t.dataset.mine, S.me);
     else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
     else if (t.dataset.edit) openEdit(+t.dataset.edit);
     else if (t.tagName === 'TH' && t.dataset.k) {
@@ -532,8 +569,8 @@ function openEdit(id, winner) {
   $('#e-miss').value = p.miss || 0;
   $('#e-note').value = p.note;
   const drafted = S.picks.some(k => k.playerId === id);
-  $('#e-mgr').innerHTML = S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
-  if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? onClock(S.picks.length);
+  $('#e-mgr').innerHTML = '<option value="-1">Someone (not recorded)</option>' + S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
+  if (S.picks.length < totalPicks()) $('#e-mgr').value = winner ?? (auction() ? -1 : onClock(S.picks.length));
   $('#e-draft').disabled = drafted || S.picks.length >= totalPicks();
   $('#e-pricewrap').style.display = auction() ? '' : 'none';
   $('#e-price').value = '';

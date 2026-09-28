@@ -166,3 +166,30 @@ func TestMinBid(t *testing.T) {
 		t.Fatal("$76 rejected", c)
 	}
 }
+
+func TestGoneAndUnpick(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	h := (&server{st: st}).routes()
+	do := func(path, body string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		return w.Code
+	}
+	do("/api/import", `{"text":"Name\nA\nB\nC"}`)
+	if c := do("/api/pick", `{"playerId":1,"manager":-1}`); c != 200 {
+		t.Fatal("mark gone without price rejected", c)
+	}
+	if c := do("/api/pick", `{"playerId":2,"manager":0,"price":10}`); c != 200 {
+		t.Fatal("my pick rejected", c)
+	}
+	if c := do("/api/unpick", `{"playerId":1}`); c != 200 {
+		t.Fatal("unpick", c)
+	}
+	s := st.get()
+	if len(s.Picks) != 1 || s.Picks[0].PlayerID != 2 || s.Picks[0].Overall != 1 {
+		t.Fatalf("after unpick: %+v", s.Picks)
+	}
+	if c := do("/api/unpick", `{"playerId":3}`); c != 400 {
+		t.Fatal("unpick of undrafted player allowed")
+	}
+}

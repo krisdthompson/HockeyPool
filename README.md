@@ -48,6 +48,15 @@ the same URL, and picks sync every 2 seconds.
 - **Flags**: ★ target, ⚠ avoid and caution, with the reason in the note.
   They're set in `players/convert.py` (TAGS) and editable per player in
   the app.
+- **Tick off drafted players**: each row has a ✓ checkbox. Ticking it
+  removes the player from the board without recording a buyer; unticking
+  (with "Show drafted" on) puts him back. **Mine** records your own buys
+  with a price, which tracks your budget. A buyer and price for anyone
+  else is optional (click the name). Unrecorded prices are assumed to be
+  the player's pre-auction value when the app estimates the room's
+  remaining money.
+- **Best buys now**: the top five available players you can afford (no
+  ⚠ avoid), plus your ★ targets, with Value and Max.
 - **Add player**: search for a name that isn't listed, and a button adds it.
 - **Draft or auction**: set an **Auction budget** in Setup (for example
   $100) to record a price with every pick. The page then shows each team's

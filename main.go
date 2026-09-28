@@ -443,9 +443,12 @@ type importReq struct {
 
 type pickReq struct {
 	PlayerID int  `json:"playerId"`
-	Manager  *int `json:"manager"` // nil = whoever is on the clock
+	Manager  *int `json:"manager"` // nil = whoever is on the clock; -1 = gone, buyer unknown
 	Price    int  `json:"price"`
 }
+
+// Gone marks a pick whose buyer wasn't recorded.
+const Gone = -1
 
 // normTag keeps only the tags the page knows how to show.
 func normTag(t string) string {
@@ -573,12 +576,17 @@ func (sv *server) routes() http.Handler {
 		}
 		m := onClock(s, len(s.Picks))
 		if req.Manager != nil {
-			if *req.Manager < 0 || *req.Manager >= len(s.Managers) {
+			if *req.Manager < Gone || *req.Manager >= len(s.Managers) {
 				return errors.New("unknown manager")
 			}
 			m = *req.Manager
 		} else if s.Budget > 0 {
 			return errors.New("auction: choose who won the player")
+		}
+		if m == Gone {
+			// Just off the board: the buyer and price are optional.
+			s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: Gone, Price: max(0, req.Price), At: time.Now()})
+			return nil
 		}
 		n := 0
 		for _, k := range s.Picks {
@@ -601,6 +609,19 @@ func (sv *server) routes() http.Handler {
 		}
 		s.Picks = append(s.Picks, Pick{Overall: len(s.Picks) + 1, PlayerID: req.PlayerID, Manager: m, Price: price, At: time.Now()})
 		return nil
+	}))
+
+	mux.HandleFunc("POST /api/unpick", mutate(sv, func(s *State, req pickReq) error {
+		for i, k := range s.Picks {
+			if k.PlayerID == req.PlayerID {
+				s.Picks = append(s.Picks[:i], s.Picks[i+1:]...)
+				for j := i; j < len(s.Picks); j++ {
+					s.Picks[j].Overall = j + 1
+				}
+				return nil
+			}
+		}
+		return errors.New("player isn't drafted")
 	}))
 
 	mux.HandleFunc("POST /api/undo", mutate(sv, func(s *State, _ struct{}) error {
