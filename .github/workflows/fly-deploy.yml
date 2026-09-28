@@ -1,0 +1,31 @@
+# Deploys to fly.io on every push to main. Needs a FLY_API_TOKEN repo secret
+# (`fly tokens create org`). Creates the app and its volume on first run.
+name: Deploy to fly.io
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: fly-deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go test ./...
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Create app and volume if missing
+        run: |
+          app=$(sed -n 's/^app = "\(.*\)"/\1/p' fly.toml)
+          region=$(sed -n 's/^primary_region = "\(.*\)"/\1/p' fly.toml)
+          flyctl status --app "$app" >/dev/null 2>&1 || flyctl apps create "$app"
+          if ! flyctl volumes list --app "$app" | grep -q draft_data; then
+            flyctl volumes create draft_data --app "$app" --region "$region" --size 1 --yes
+          fi
+      - run: flyctl deploy --remote-only --ha=false

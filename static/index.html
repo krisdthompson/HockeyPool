@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pool Draft</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --text: #16191d; --muted: #5d6670; --line: #dde1e6;
+  --accent: #0b5cad; --accent-text: #fff; --good: #1d7a3a; --warn: #a86400; --bad: #b3261e;
+  --chip: #eef1f5; --mine: #e5f0fb; --gone: #fbeeee;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --panel: #1a1e24; --text: #e7eaee; --muted: #9aa3ad; --line: #2c323a;
+    --accent: #5ea8f0; --accent-text: #0b1520; --good: #5cc27d; --warn: #e0a54a; --bad: #f07b72;
+    --chip: #252b33; --mine: #16283b; --gone: #3a1f1f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+header h1 { font-size: 16px; margin: 0; }
+.clock { font-weight: 600; }
+.clock.me { color: var(--good); }
+.muted { color: var(--muted); }
+nav { margin-left: auto; display: flex; gap: 6px; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { background: var(--chip); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.small { padding: 2px 8px; font-size: 12px; }
+button:disabled { opacity: .45; cursor: default; }
+nav button.active { background: var(--accent); color: var(--accent-text); }
+input, select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 360px; }
+@media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.panel h2 { font-size: 14px; margin: 0 0 8px; }
+.side { display: grid; gap: 16px; align-content: start; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+.filters input[type=search] { flex: 1 1 160px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--panel); }
+th.l, td.l { text-align: left; }
+td.name { white-space: normal; min-width: 140px; }
+td.name a { color: inherit; text-decoration: none; font-weight: 600; cursor: pointer; }
+tr.stack td { background: var(--mine); }
+tr.likelygone td.name a { color: var(--bad); }
+.tag { display: inline-block; font-size: 11px; padding: 0 5px; border-radius: 4px; margin-left: 4px; font-weight: 600; vertical-align: 1px; }
+.t-rk { background: #7b5cd633; color: #7b5cd6; }
+.t-inj { background: #b3261e22; color: var(--bad); }
+.t-dtd { background: #a8640022; color: var(--warn); }
+.t-stack { background: #1d7a3a22; color: var(--good); }
+.t-cap { background: #b3261e22; color: var(--bad); }
+.t-gone { background: #b3261e22; color: var(--bad); }
+.note { font-size: 12px; color: var(--muted); font-weight: 400; }
+.score { font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.roster li { margin: 3px 0; }
+.roster { padding-left: 20px; margin: 6px 0; }
+.weights label { display: grid; grid-template-columns: 1fr 70px 40px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
+.weights output { text-align: right; font-variant-numeric: tabular-nums; }
+.board { font-size: 12px; }
+.board td, .board th { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.board td.me, .board th.me { background: var(--mine); }
+.board td.next { outline: 2px solid var(--accent); outline-offset: -2px; }
+.picks { max-height: 260px; overflow-y: auto; font-size: 13px; }
+.picks div { padding: 3px 0; border-bottom: 1px solid var(--line); }
+#setup { display: none; padding: 16px; max-width: 900px; }
+#setup .panel { margin-bottom: 16px; }
+#setup textarea { width: 100%; min-height: 180px; font-family: ui-monospace, monospace; font-size: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
+.err { color: var(--bad); }
+.ok { color: var(--good); }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; max-width: 420px; width: calc(100% - 32px); }
+dialog label { display: block; margin: 8px 0; }
+dialog input[type=text], dialog input[type=number], dialog select { width: 100%; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast.show { opacity: .95; }
+@media (max-width: 640px) { .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏒 Pool Draft</h1>
+  <span class="clock" id="clock"></span>
+  <span class="muted" id="nextme"></span>
+  <nav>
+    <button id="tab-board" class="active">Board</button>
+    <button id="tab-setup">Setup</button>
+  </nav>
+</header>
+
+<main id="board">
+  <section class="panel">
+    <div class="filters">
+      <input type="search" id="q" placeholder="Search player or team">
+      <select id="fpos"><option value="">All pos</option><option>C</option><option>LW</option><option>RW</option><option>F</option><option>D</option><option>G</option></select>
+      <select id="fteam"><option value="">All teams</option></select>
+      <label><input type="checkbox" id="fmyteams"> My teams only</label>
+      <label><input type="checkbox" id="fhealthy"> Hide injured</label>
+      <label><input type="checkbox" id="frookie"> Rookies only</label>
+      <label><input type="checkbox" id="fdrafted"> Show drafted</label>
+    </div>
+    <div class="tablewrap">
+      <table id="players">
+        <thead><tr>
+          <th data-k="rank">#</th>
+          <th class="l" data-k="name">Player</th>
+          <th class="l" data-k="team">Team</th>
+          <th class="l hide-sm" data-k="pos">Pos</th>
+          <th class="hide-sm" data-k="gp">GP</th>
+          <th class="hide-sm" data-k="g">G</th>
+          <th class="hide-sm" data-k="a">A</th>
+          <th data-k="pts">Pts</th>
+          <th data-k="proj" title="Projected points (import value, or points pace over 82 games)">Proj</th>
+          <th data-k="score" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
+          <th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="muted" id="count"></p>
+  </section>
+
+  <aside class="side">
+    <section class="panel">
+      <h2 id="mytitle">My team</h2>
+      <div class="chips" id="myteams"></div>
+      <ol class="roster" id="myroster"></ol>
+      <div id="stacknext" class="muted"></div>
+    </section>
+
+    <section class="panel weights">
+      <h2>Ranking weights</h2>
+      <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
+      <label>Rookie discount % <input type="range" id="w-rookie" min="-20" max="50" step="1"><output></output></label>
+      <label>Day-to-day discount % <input type="range" id="w-dtd" min="0" max="30" step="1"><output></output></label>
+      <label>IR / out discount % <input type="range" id="w-ir" min="0" max="100" step="5"><output></output></label>
+      <label>Over team-cap discount % <input type="range" id="w-cap" min="0" max="100" step="5"><output></output></label>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">A player's "expected games missed" overrides the injury discounts. Weights are saved in this browser only.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Recent picks <button class="small" id="undo" style="float:right">Undo last</button></h2>
+      <div class="picks" id="recent"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Draft board</h2>
+      <div class="tablewrap"><table class="board" id="boardgrid"></table></div>
+    </section>
+  </aside>
+</main>
+
+<div id="setup">
+  <section class="panel">
+    <h2>Pool settings</h2>
+    <p class="muted">One manager per line, <b>in first-round draft order</b>.</p>
+    <textarea id="s-managers" style="min-height:140px;font-family:inherit;font-size:14px"></textarea>
+    <div class="row">
+      <label>I am <select id="s-me"></select></label>
+      <label>Players each <input type="number" id="s-roster" min="1" max="40" style="width:70px"></label>
+      <label><input type="checkbox" id="s-snake"> Snake order</label>
+      <label title="Discount players that would add a new NHL team beyond this many. 0 = off.">Max NHL teams on my roster <input type="number" id="s-maxteams" min="0" max="32" style="width:70px"></label>
+    </div>
+    <button class="primary" id="s-save">Save settings</button> <span id="s-msg"></span>
+  </section>
+
+  <section class="panel">
+    <h2>Import players</h2>
+    <p class="muted">Paste CSV, or copy the cells straight out of a spreadsheet (tab-separated), with a header row. Only <b>Name</b> is required. Headers it recognises:
+      <code>Name, Team, Pos, GP, G, A, Pts, Proj, Miss, Rookie, Injury, Note</code>.
+      <b>Proj</b> = projected season points (if blank we use points pace over 82 GP). <b>Miss</b> = expected games missed. <b>Rookie</b> = Y/1/X. <b>Injury</b> = free text like <code>DTD</code>, <code>IR</code>, <code>LTIR</code>, <code>Out</code>.</p>
+    <textarea id="s-csv" placeholder="Name,Team,Pos,GP,G,A,Pts,Rookie,Injury&#10;..."></textarea>
+    <div class="row">
+      <input type="file" id="s-file" accept=".csv,.tsv,.txt">
+      <button class="primary" id="s-import">Import (replaces player list)</button>
+      <span id="i-msg"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Backup and reset</h2>
+    <div class="row">
+      <a href="api/export"><button>Download backup (JSON)</button></a>
+      <label>Restore backup <input type="file" id="s-restore" accept=".json"></label>
+      <button id="s-reset" style="color:var(--bad)">Clear all picks</button>
+    </div>
+  </section>
+</div>
+
+<dialog id="edit">
+  <form method="dialog" id="editform">
+    <h3 id="e-title" style="margin:0 0 6px"></h3>
+    <div class="muted" id="e-sub"></div>
+    <label><input type="checkbox" id="e-rookie"> Rookie</label>
+    <label>Injury status <input type="text" id="e-injury" placeholder="e.g. DTD, IR, LTIR - back Dec"></label>
+    <label>Expected games missed (0 = unknown) <input type="number" id="e-miss" min="0" max="82"></label>
+    <label>Note <input type="text" id="e-note"></label>
+    <div class="row">
+      <button value="save" class="primary">Save</button>
+      <button value="cancel">Cancel</button>
+    </div>
+    <hr style="border:0;border-top:1px solid var(--line)">
+    <label>Record as drafted by <select id="e-mgr"></select></label>
+    <button value="draft" id="e-draft">Record pick</button>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let S = null, sortKey = 'score', sortDir = -1, editId = null;
+
+const W_DEFAULT = { stack: 10, rookie: 10, dtd: 5, ir: 50, cap: 50 };
+let W = { ...W_DEFAULT };
+try { Object.assign(W, JSON.parse(localStorage.getItem('pool-weights') || '{}')); } catch {}
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function api(path, body) {
+  const r = await fetch('api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  S = j; render();
+  return j;
+}
+
+async function poll() {
+  try {
+    const r = await fetch('api/state' + (S ? '?since=' + S.version : ''), { cache: 'no-store' });
+    if (r.status === 200) { S = await r.json(); render(); }
+  } catch {}
+}
+
+function onClock(pick) {
+  const n = S.managers.length, round = Math.floor(pick / n), idx = pick % n;
+  return S.snake && round % 2 === 1 ? n - 1 - idx : idx;
+}
+const totalPicks = () => S.managers.length * S.rosterSize;
+
+function picksUntilMe() {
+  for (let p = S.picks.length; p < totalPicks(); p++) if (onClock(p) === S.me) return p - S.picks.length;
+  return null;
+}
+
+function injuryKind(p) {
+  const s = (p.injury || '').toUpperCase();
+  if (!s || /^(HEALTHY|OK|NONE|-)$/.test(s)) return '';
+  if (/\b(LTIR|IR|OUT|SEASON|SURGERY|SUSP\w*)\b/.test(s)) return 'ir';
+  return 'dtd';
+}
+
+function proj(p) {
+  if (p.proj > 0) return p.proj;
+  if (p.gp > 0) return p.pts / p.gp * 82;
+  return p.pts;
+}
+
+function analyse() {
+  const drafted = new Map(S.picks.map(k => [k.playerId, k]));
+  const byId = new Map(S.players.map(p => [p.id, p]));
+  const mine = S.picks.filter(k => k.manager === S.me).map(k => byId.get(k.playerId)).filter(Boolean);
+  const myTeams = new Map();
+  for (const p of mine) if (p.team) myTeams.set(p.team, (myTeams.get(p.team) || 0) + 1);
+  const capHit = S.maxTeams > 0 && myTeams.size >= S.maxTeams;
+
+  const rows = S.players.map(p => {
+    const base = proj(p);
+    let f = 1;
+    const kind = injuryKind(p);
+    if (p.miss > 0) f *= Math.max(0, 82 - p.miss) / 82;
+    else if (kind === 'ir') f *= 1 - W.ir / 100;
+    else if (kind === 'dtd') f *= 1 - W.dtd / 100;
+    if (p.rookie) f *= 1 - W.rookie / 100;
+    const stack = p.team ? (myTeams.get(p.team) || 0) : 0;
+    f *= 1 + W.stack / 100 * stack;
+    const overCap = capHit && p.team && !myTeams.has(p.team);
+    if (overCap) f *= 1 - W.cap / 100;
+    return { ...p, projv: base, score: base * f, kind, stack, overCap, pick: drafted.get(p.id) };
+  });
+  // "Likely gone" = ranked by raw projection inside the next N picks before my turn.
+  const until = picksUntilMe();
+  const avail = rows.filter(r => !r.pick).sort((a, b) => b.projv - a.projv);
+  avail.forEach((r, i) => { r.adp = i; r.likelyGone = until !== null && i < until; });
+  const byScore = rows.filter(r => !r.pick).sort((a, b) => b.score - a.score);
+  byScore.forEach((r, i) => r.rank = i + 1);
+  return { rows, mine, myTeams, byId, until, capHit };
+}
+
+function render() {
+  if (!S) return;
+  const A = analyse();
+  const n = S.picks.length, done = n >= totalPicks();
+  const who = done ? null : onClock(n);
+  const clock = $('#clock');
+  clock.textContent = done ? 'Draft complete' : `Pick ${n + 1} · Round ${Math.floor(n / S.managers.length) + 1} · On the clock: ${S.managers[who]}`;
+  clock.classList.toggle('me', who === S.me);
+  $('#nextme').textContent = done ? '' : A.until === 0 ? "🟢 You're up!" : A.until === null ? 'Your roster is full' : `You pick in ${A.until}`;
+
+  // Team filter options.
+  const teams = [...new Set(S.players.map(p => p.team).filter(Boolean))].sort();
+  const ft = $('#fteam'), cur = ft.value;
+  if (ft.options.length - 1 !== teams.length) {
+    ft.innerHTML = '<option value="">All teams</option>' + teams.map(t => `<option>${esc(t)}</option>`).join('');
+    ft.value = cur;
+  }
+
+  // Player table.
+  const q = $('#q').value.trim().toLowerCase(), fpos = $('#fpos').value, fteam = ft.value;
+  let rows = A.rows.filter(r => {
+    if (r.pick && !$('#fdrafted').checked) return false;
+    if (q && !(r.name.toLowerCase().includes(q) || (r.team || '').toLowerCase() === q)) return false;
+    if (fpos) {
+      const pos = (r.pos || '').toUpperCase();
+      if (fpos === 'F' ? !/C|LW|RW|F|W/.test(pos) : !pos.split(/[\/, ]+/).includes(fpos)) return false;
+    }
+    if (fteam && r.team !== fteam) return false;
+    if ($('#fmyteams').checked && !A.myTeams.has(r.team)) return false;
+    if ($('#fhealthy').checked && (r.kind || r.miss > 0)) return false;
+    if ($('#frookie').checked && !r.rookie) return false;
+    return true;
+  });
+  rows.sort((a, b) => {
+    let x = a[sortKey === 'proj' ? 'projv' : sortKey], y = b[sortKey === 'proj' ? 'projv' : sortKey];
+    if (sortKey === 'rank') { x = a.rank ?? 1e9; y = b.rank ?? 1e9; return (x - y) * -sortDir; }
+    if (typeof x === 'string') return x.localeCompare(y) * -sortDir;
+    return ((x ?? 0) - (y ?? 0)) * sortDir;
+  });
+  const shown = rows.slice(0, 300);
+  const canPick = !done;
+  $('#players tbody').innerHTML = shown.map(r => {
+    const tags = [
+      r.rookie ? '<span class="tag t-rk">R</span>' : '',
+      r.kind === 'ir' || r.miss > 0 ? `<span class="tag t-inj" title="${esc(r.injury)}">${esc(r.injury || 'INJ')}${r.miss ? ` ~${r.miss}g` : ''}</span>` : '',
+      r.kind === 'dtd' && !r.miss ? `<span class="tag t-dtd" title="${esc(r.injury)}">${esc(r.injury)}</span>` : '',
+      r.stack && !r.pick ? `<span class="tag t-stack">stack ×${r.stack}</span>` : '',
+      r.overCap && !r.pick ? '<span class="tag t-cap">new team</span>' : '',
+      r.likelyGone && !r.pick ? '<span class="tag t-gone" title="Top by projection within the picks before your next turn">likely gone</span>' : '',
+    ].join('');
+    const pickInfo = r.pick ? `<span class="muted">#${r.pick.overall} ${esc(S.managers[r.pick.manager])}</span>` :
+      `<button class="small primary" data-draft="${r.id}" ${canPick ? '' : 'disabled'}>Draft</button> <button class="small" data-mine="${r.id}" title="Record as my pick" ${canPick ? '' : 'disabled'}>Mine</button>`;
+    return `<tr class="${r.stack && !r.pick ? 'stack' : ''} ${r.likelyGone && !r.pick ? 'likelygone' : ''}">
+      <td>${r.rank ?? ''}</td>
+      <td class="l name"><a data-edit="${r.id}">${esc(r.name)}</a>${tags}${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}</td>
+      <td class="l">${esc(r.team)}</td><td class="l hide-sm">${esc(r.pos)}</td>
+      <td class="hide-sm">${r.gp || ''}</td><td class="hide-sm">${r.g || ''}</td><td class="hide-sm">${r.a || ''}</td>
+      <td>${r.pts || ''}</td><td>${r.projv.toFixed(0)}</td><td class="score">${r.score.toFixed(1)}</td>
+      <td>${pickInfo}</td></tr>`;
+  }).join('') || `<tr><td colspan="11" class="l muted">${S.players.length ? 'No players match.' : 'No players yet. Open Setup and import your list.'}</td></tr>`;
+  $('#count').textContent = `${rows.length} shown${rows.length > shown.length ? ` (first ${shown.length})` : ''} · ${S.players.length - S.picks.length} available of ${S.players.length}`;
+  document.querySelectorAll('#players th').forEach(th => th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.k === sortKey ? (sortDir < 0 ? ' ▼' : ' ▲') : ''));
+
+  // My team.
+  $('#mytitle').textContent = `${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})`;
+  $('#myteams').innerHTML = [...A.myTeams].sort((a, b) => b[1] - a[1]).map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join('')
+    + (S.maxTeams ? `<span class="chip">${A.myTeams.size}/${S.maxTeams} teams</span>` : A.myTeams.size ? `<span class="chip">${A.myTeams.size} teams</span>` : '');
+  $('#myroster').innerHTML = A.mine.map(p => `<li>${esc(p.name)} <span class="muted">${esc(p.team)} ${esc(p.pos)} · ${proj(p).toFixed(0)}</span></li>`).join('') || '<li class="muted">No picks yet</li>';
+  const stackBest = A.rows.filter(r => !r.pick && r.stack).sort((a, b) => b.score - a.score).slice(0, 5);
+  $('#stacknext').innerHTML = stackBest.length ? 'Best stack adds: ' + stackBest.map(r => `${esc(r.name)} (${esc(r.team)} ${r.score.toFixed(0)})`).join(', ') : '';
+
+  // Recent picks.
+  $('#recent').innerHTML = S.picks.slice().reverse().map(k => {
+    const p = A.byId.get(k.playerId);
+    return `<div><b>#${k.overall}</b> ${esc(S.managers[k.manager])}: ${esc(p?.name)} <span class="muted">${esc(p?.team)}</span></div>`;
+  }).join('') || '<div class="muted">None yet</div>';
+  $('#undo').disabled = !S.picks.length;
+
+  // Board grid: rows = rounds, columns = managers.
+  const grid = S.managers.map(() => []);
+  for (const k of S.picks) grid[k.manager]?.push(A.byId.get(k.playerId));
+  let html = '<tr><th>Rd</th>' + S.managers.map((m, i) => `<th class="${i === S.me ? 'me' : ''}">${esc(m)}</th>`).join('') + '</tr>';
+  for (let r = 0; r < S.rosterSize; r++) {
+    html += `<tr><td>${r + 1}</td>` + S.managers.map((m, i) => {
+      const p = grid[i][r];
+      const isNext = !done && who === i && grid[i].length === r;
+      return `<td class="${i === S.me ? 'me' : ''} ${isNext ? 'next' : ''}" title="${esc(p ? p.name + ' ' + p.team : '')}">${p ? esc(p.name.split(' ').slice(-1)[0]) + ` <span class="muted">${esc(p.team)}</span>` : ''}</td>`;
+    }).join('') + '</tr>';
+  }
+  $('#boardgrid').innerHTML = html;
+
+  renderSetup();
+}
+
+let setupFilled = -1;
+function renderSetup() {
+  if (setupFilled === S.version || document.activeElement?.closest('#setup')) return;
+  setupFilled = S.version;
+  $('#s-managers').value = S.managers.join('\n');
+  fillMe(S.managers, S.me);
+  $('#s-roster').value = S.rosterSize;
+  $('#s-snake').checked = S.snake;
+  $('#s-maxteams').value = S.maxTeams || 0;
+}
+function fillMe(names, sel) {
+  $('#s-me').innerHTML = names.map((m, i) => `<option value="${i}">${i + 1}. ${esc(m)}</option>`).join('');
+  $('#s-me').value = Math.min(sel, names.length - 1);
+}
+$('#s-managers').addEventListener('input', () => fillMe($('#s-managers').value.split('\n').map(s => s.trim()).filter(Boolean), +$('#s-me').value));
+
+// Events.
+$('#players').addEventListener('click', async e => {
+  const t = e.target;
+  try {
+    if (t.dataset.draft) { await api('pick', { playerId: +t.dataset.draft }); toast('Pick recorded'); }
+    else if (t.dataset.mine) { await api('pick', { playerId: +t.dataset.mine, manager: S.me }); toast('Added to your team'); }
+    else if (t.dataset.edit) openEdit(+t.dataset.edit);
+    else if (t.tagName === 'TH' && t.dataset.k) {
+      const k = t.dataset.k;
+      if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = ['name', 'team', 'pos', 'rank'].includes(k) ? 1 : -1; }
+      render();
+    }
+  } catch (err) { toast(err.message); }
+});
+['#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#frookie', '#fdrafted'].forEach(s => $(s).addEventListener('input', render));
+$('#undo').onclick = async () => { try { await api('undo'); toast('Last pick undone'); } catch (e) { toast(e.message); } };
+
+for (const k of Object.keys(W_DEFAULT)) {
+  const inp = $('#w-' + k), out = inp.nextElementSibling;
+  inp.value = W[k]; out.textContent = W[k];
+  inp.addEventListener('input', () => {
+    W[k] = +inp.value; out.textContent = inp.value;
+    try { localStorage.setItem('pool-weights', JSON.stringify(W)); } catch {}
+    render();
+  });
+}
+
+function openEdit(id) {
+  const p = S.players.find(p => p.id === id);
+  editId = id;
+  $('#e-title').textContent = p.name;
+  $('#e-sub').textContent = `${p.team} ${p.pos} · ${p.gp} GP, ${p.g} G, ${p.a} A, ${p.pts} P`;
+  $('#e-rookie').checked = p.rookie;
+  $('#e-injury').value = p.injury;
+  $('#e-miss').value = p.miss || 0;
+  $('#e-note').value = p.note;
+  const drafted = S.picks.some(k => k.playerId === id);
+  $('#e-mgr').innerHTML = S.managers.map((m, i) => `<option value="${i}">${esc(m)}</option>`).join('');
+  if (S.picks.length < totalPicks()) $('#e-mgr').value = onClock(S.picks.length);
+  $('#e-draft').disabled = drafted || S.picks.length >= totalPicks();
+  $('#edit').showModal();
+}
+$('#edit').addEventListener('close', async () => {
+  const v = $('#edit').returnValue;
+  try {
+    if (v === 'save') {
+      await api('player', { id: editId, rookie: $('#e-rookie').checked, injury: $('#e-injury').value, miss: +$('#e-miss').value || 0, note: $('#e-note').value });
+      toast('Player updated');
+    } else if (v === 'draft') {
+      await api('pick', { playerId: editId, manager: +$('#e-mgr').value });
+      toast('Pick recorded');
+    }
+  } catch (e) { toast(e.message); }
+});
+
+// Tabs.
+function tab(name) {
+  $('#board').style.display = name === 'board' ? '' : 'none';
+  $('#setup').style.display = name === 'setup' ? 'block' : 'none';
+  $('#tab-board').classList.toggle('active', name === 'board');
+  $('#tab-setup').classList.toggle('active', name === 'setup');
+}
+$('#tab-board').onclick = () => tab('board');
+$('#tab-setup').onclick = () => tab('setup');
+
+// Setup actions.
+$('#s-save').onclick = async () => {
+  try {
+    await api('settings', {
+      managers: $('#s-managers').value.split('\n'), me: +$('#s-me').value,
+      rosterSize: +$('#s-roster').value, snake: $('#s-snake').checked, maxTeams: +$('#s-maxteams').value || 0,
+    });
+    setupFilled = -1; renderSetup();
+    $('#s-msg').className = 'ok'; $('#s-msg').textContent = 'Saved';
+  } catch (e) { $('#s-msg').className = 'err'; $('#s-msg').textContent = e.message; }
+};
+$('#s-file').onchange = async e => { const f = e.target.files[0]; if (f) $('#s-csv').value = await f.text(); };
+$('#s-import').onclick = async () => {
+  try {
+    const s = await api('import', { text: $('#s-csv').value });
+    $('#i-msg').className = 'ok';
+    $('#i-msg').textContent = `Imported ${s.players.length} players (${s.players.filter(p => p.rookie).length} rookies, ${s.players.filter(p => p.injury).length} with injury notes)`;
+  } catch (e) { $('#i-msg').className = 'err'; $('#i-msg').textContent = e.message; }
+};
+$('#s-restore').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (!confirm('Replace the whole draft with this backup?')) return;
+  try { await api('restore', JSON.parse(await f.text())); setupFilled = -1; toast('Backup restored'); } catch (err) { toast(err.message); }
+};
+$('#s-reset').onclick = async () => {
+  if (!confirm('Clear every pick? Players and settings stay.')) return;
+  try { await api('reset'); toast('Draft reset'); } catch (e) { toast(e.message); }
+};
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>
