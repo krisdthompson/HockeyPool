@@ -13,6 +13,14 @@ the same URL, and picks sync every 2 seconds.
   Oct 7 and play 82 games in 186 days. Rookies are hand-flagged in the script
   as a best guess. To regenerate:
   `python3 players/convert.py players/<sheet>.xlsx > players/players.csv`.
+- **ESPN cheat sheet**: `players/espn_parse.py` extracts ESPN's tiers and
+  lists (sleepers, breakouts and so on) from the PDF into `players/espn.csv`.
+  `convert.py` then turns each ESPN forward or defense rank into an
+  "Expert" points estimate: ESPN's Nth forward gets the Nth-best forward
+  points total from last season. The app blends that into Proj ("ESPN tier
+  weight", default 50%). ESPN's labels appear in each player's note.
+- Before the first pick, each deploy with a changed built-in list reloads
+  the players. Once the draft starts, only Setup changes them.
 - **More lists**: in Setup, **Merge into list** matches players by name and
   updates only the columns your list has (for example `Name,Proj` or
   `Name,Rookie`). Players it doesn't know are added. Merging is safe

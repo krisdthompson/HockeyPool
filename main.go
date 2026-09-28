@@ -4,6 +4,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/csv"
@@ -41,8 +42,9 @@ type Player struct {
 	G      int     `json:"g"`
 	A      int     `json:"a"`
 	Pts    int     `json:"pts"`
-	Proj   float64 `json:"proj"` // projected season points; 0 = derive from pace
-	Miss   int     `json:"miss"` // expected games missed to injury; 0 = unknown
+	Proj   float64 `json:"proj"`   // projected season points; 0 = derive from pace
+	Expert float64 `json:"expert"` // expert-implied points (ESPN tiers); 0 = none
+	Miss   int     `json:"miss"`   // expected games missed to injury; 0 = unknown
 	Rookie bool    `json:"rookie"`
 	Injury string  `json:"injury"` // free text: "", "DTD", "IR", "LTIR - back Dec", ...
 	Note   string  `json:"note"`
@@ -65,6 +67,7 @@ type State struct {
 	MaxTeams   int      `json:"maxTeams"`   // 0 = no limit; soft cap on distinct NHL teams on my roster
 	Budget     int      `json:"budget"`     // 0 = snake/straight draft; >0 = auction with this much per manager
 	AuctionSet bool     `json:"auctionSet"` // budget was chosen in Setup; don't apply the $100 default again
+	SeedHash   string   `json:"seedHash"`   // which built-in list the players came from
 	Players    []Player `json:"players"`
 	Picks      []Pick   `json:"picks"`
 }
@@ -171,6 +174,7 @@ var headerAliases = map[string]string{
 	"g": "g", "goals": "g",
 	"a": "a", "assists": "a",
 	"pts": "pts", "p": "pts", "points": "pts",
+	"expert": "expert", "espn": "expert", "expert proj": "expert",
 	"proj": "proj", "projected": "proj", "projection": "proj", "proj pts": "proj", "projected points": "proj",
 	"miss": "miss", "games missed": "miss", "missed": "miss",
 	"rookie": "rookie", "rk": "rookie", "rook": "rookie",
@@ -248,6 +252,7 @@ func parsePlayers(text string) ([]Player, map[string]bool, error) {
 			A:      int(num(field(row, "a"))),
 			Pts:    int(num(field(row, "pts"))),
 			Proj:   num(field(row, "proj")),
+			Expert: num(field(row, "expert")),
 			Miss:   int(num(field(row, "miss"))),
 			Rookie: truthy(field(row, "rookie")),
 			Injury: field(row, "injury"),
@@ -318,6 +323,9 @@ func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added in
 		}
 		if has["proj"] {
 			p.Proj = np.Proj
+		}
+		if has["expert"] {
+			p.Expert = np.Expert
 		}
 		if has["miss"] {
 			p.Miss = np.Miss
@@ -517,6 +525,7 @@ func (sv *server) routes() http.Handler {
 			return err
 		}
 		s.Players = players
+		s.SeedHash = seedHash()
 		return nil
 	}))
 
@@ -593,6 +602,10 @@ func (sv *server) routes() http.Handler {
 	return sv.auth(mux)
 }
 
+func seedHash() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(seedPlayers)))[:12]
+}
+
 func main() {
 	dir := os.Getenv("DATA_DIR")
 	if dir == "" {
@@ -618,15 +631,17 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if len(st.get().Players) == 0 {
+	// Before the first pick, a deploy with a changed built-in list replaces
+	// the players. Once the draft starts, lists only change via Setup.
+	if s := st.get(); len(s.Players) == 0 || (len(s.Picks) == 0 && s.SeedHash != seedHash()) {
 		players, _, err := parsePlayers(seedPlayers)
 		if err != nil {
 			log.Fatalf("seed players: %v", err)
 		}
-		if _, err := st.update(func(s *State) error { s.Players = players; return nil }); err != nil {
+		if _, err := st.update(func(s *State) error { s.Players, s.SeedHash = players, seedHash(); return nil }); err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("loaded %d players from the organizer's list", len(players))
+		log.Printf("loaded %d players from the built-in list", len(players))
 	}
 	port := os.Getenv("PORT")
 	if port == "" {

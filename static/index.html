@@ -50,6 +50,7 @@ tr.stack td { background: var(--mine); }
 tr.likelygone td.name a { color: var(--bad); }
 .tag { display: inline-block; font-size: 11px; padding: 0 5px; border-radius: 4px; margin-left: 4px; font-weight: 600; vertical-align: 1px; }
 .t-rk { background: #7b5cd633; color: #7b5cd6; }
+.t-espn { background: #0b5cad22; color: var(--accent); }
 .t-inj { background: #b3261e22; color: var(--bad); }
 .t-dtd { background: #a8640022; color: var(--warn); }
 .t-stack { background: #1d7a3a22; color: var(--good); }
@@ -116,7 +117,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
           <th class="hide-sm" data-k="g">G</th>
           <th class="hide-sm" data-k="a">A</th>
           <th data-k="pts">Pts</th>
-          <th data-k="proj" title="Projected points: the list's Proj if given, else a blend of last season's points and 82-game pace">Proj</th>
+          <th data-k="proj" title="Projected points: last season's points/pace (or the list's Proj), blended with ESPN's tier-implied points">Proj</th>
           <th data-k="score" title="Proj adjusted for injury, rookie risk and team stacking">Score</th>
           <th></th>
         </tr></thead>
@@ -137,6 +138,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
     <section class="panel weights">
       <h2>Ranking weights</h2>
       <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
+      <label title="Blend ESPN's tier-implied points into the projection. 0 = ignore ESPN, 100 = ESPN only (for players ESPN ranks).">ESPN tier weight % <input type="range" id="w-espn" min="0" max="100" step="5"><output></output></label>
       <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
       <label>Rookie discount % <input type="range" id="w-rookie" min="-20" max="50" step="1"><output></output></label>
       <label title="Rookies with under 40 GP are projected as a blend of their pace and this baseline">Rookie baseline pts <input type="range" id="w-rbase" min="10" max="70" step="1"><output></output></label>
@@ -223,7 +225,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
 const $ = s => document.querySelector(s);
 let S = null, sortKey = 'score', sortDir = -1, editId = null;
 
-const W_DEFAULT = { pace: 50, stack: 10, rookie: 10, rbase: 30, dtd: 5, ir: 50, cap: 50 };
+const W_DEFAULT = { espn: 50, pace: 50, stack: 10, rookie: 10, rbase: 30, dtd: 5, ir: 50, cap: 50 };
 let W = { ...W_DEFAULT };
 try { Object.assign(W, JSON.parse(localStorage.getItem('pool-weights') || '{}')); } catch {}
 
@@ -272,13 +274,17 @@ function injuryKind(p) {
   return 'dtd';
 }
 
-function proj(p) {
+function statProj(p) {
   if (p.proj > 0) return p.proj;
   const pace = p.gp > 0 ? p.pts / p.gp * 82 : p.pts;
   // A rookie's 9-game pace means little: blend toward a baseline until 40 GP.
   if (p.rookie && p.gp < 40) { const w = p.gp / 40; return w * pace + (1 - w) * W.rbase; }
   // Pace flatters players who missed games last season; blend it with actual points.
   return W.pace / 100 * pace + (1 - W.pace / 100) * p.pts;
+}
+function proj(p) {
+  const s = statProj(p);
+  return p.expert > 0 ? W.espn / 100 * p.expert + (1 - W.espn / 100) * s : s;
 }
 
 function analyse() {
@@ -362,6 +368,7 @@ function render() {
   $('#players tbody').innerHTML = shown.map(r => {
     const tags = [
       r.rookie ? '<span class="tag t-rk">R</span>' : '',
+      (m => m ? `<span class="tag t-espn" title="ESPN cheat sheet tier">ESPN ${m[1]}${m[2]}</span>` : '')(/ESPN ([FD]) tier (\d)/.exec(r.note || '')),
       r.kind === 'ir' || r.miss > 0 ? `<span class="tag t-inj" title="${esc(r.injury)}">${esc(r.injury || 'INJ')}${r.miss ? ` ~${r.miss}g` : ''}</span>` : '',
       r.kind === 'dtd' && !r.miss ? `<span class="tag t-dtd" title="${esc(r.injury)}">${esc(r.injury)}</span>` : '',
       r.stack && !r.pick ? `<span class="tag t-stack">stack ×${r.stack}</span>` : '',

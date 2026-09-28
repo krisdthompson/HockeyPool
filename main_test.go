@@ -136,4 +136,9 @@ func TestSeedParses(t *testing.T) {
 	if err != nil || len(ps) < 500 {
 		t.Fatalf("seed: %d players, %v", len(ps), err)
 	}
+	for _, p := range ps {
+		if p.Name == "Connor McDavid" && p.Expert == 0 {
+			t.Error("ESPN expert projection missing from seed")
+		}
+	}
 }
