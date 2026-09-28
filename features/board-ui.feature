@@ -151,3 +151,8 @@ Feature: The draft board page
     Given "Connor McDavid" is drafted
     When Kris opens Setup
     Then the most recent automatic backups are listed for download
+
+  Scenario: Ticking several players quickly records them all
+    When Kris ticks Drafted on the top 5 players in the list one after another, choosing an owner for each
+    Then all 5 are drafted with the owners chosen
+    And the page shows no errors

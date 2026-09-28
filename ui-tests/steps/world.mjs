@@ -65,6 +65,11 @@ class World {
     });
     this.page = await this.context.newPage();
     this.page.on('dialog', d => { this.popups++; d.dismiss(); });
+    // Any console error, uncaught exception or failed request fails the scenario.
+    this.errors = [];
+    this.page.on('console', m => { if (m.type() === 'error' && !/status of 401/.test(m.text())) this.errors.push('console: ' + m.text()); });
+    this.page.on('pageerror', e => this.errors.push('exception: ' + e.message));
+    this.page.on('requestfailed', r => { if (!/net::ERR_ABORTED/.test(r.failure()?.errorText || '')) this.errors.push(`request failed: ${r.url()} ${r.failure()?.errorText}`); });
     await this.page.goto(base + url);
   }
   async signIn() {
@@ -95,5 +100,7 @@ Before(async function () {
 });
 
 After(async function () {
+  const errors = this.errors || [];
   await this.context?.close();
+  if (errors.length) throw new Error('browser errors:\n' + errors.join('\n'));
 });

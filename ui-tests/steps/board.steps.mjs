@@ -346,3 +346,26 @@ Then('the most recent automatic backups are listed for download', async function
   assert.equal(r.status(), 200);
   assert.ok((await r.json()).picks.length > 0, 'the latest backup has the pick');
 });
+
+When(/^Kris ticks Drafted on the top (\d+) players in the list one after another, choosing an owner for each$/, async function (n) {
+  this.bag.rapid = [];
+  for (let i = 0; i < n; i++) {
+    const row = this.page.locator('#players tr[data-rid]').first();
+    const id = +(await row.getAttribute('data-rid')).split('-')[1];
+    await row.locator('input.gone').click();
+    const owner = this.page.locator(`#players [data-pd="${id}"] [data-pf=mgr]`);
+    await owner.waitFor();
+    await owner.selectOption({ index: 1 + (i % 3) });
+    await this.page.locator(`#players [data-pd="${id}"] [data-act=pskip]`).click();
+    this.bag.rapid.push({ id, manager: i % 3 });
+  }
+});
+Then(/^all (\d+) are drafted with the owners chosen$/, async function (n) {
+  await eventually(async () => {
+    const picks = (await state()).picks;
+    return this.bag.rapid.length === n && this.bag.rapid.every(r => picks.some(k => k.playerId === r.id && k.manager === r.manager));
+  }, 'all rapid picks to save');
+});
+Then('the page shows no errors', async function () {
+  assert.deepEqual(this.errors, []);
+});

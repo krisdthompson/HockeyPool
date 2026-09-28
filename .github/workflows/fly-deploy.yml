@@ -7,11 +7,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      live_only:
+        description: Only run the read-only live-site check
+        type: boolean
+        default: false
 
 concurrency: fly-deploy-${{ github.ref }}
 
 jobs:
   test:
+    if: ${{ !inputs.live_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -34,7 +40,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name != 'pull_request'
+    if: ${{ github.event_name != 'pull_request' && !inputs.live_only }}
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -57,3 +63,27 @@ jobs:
           app=$(sed -n 's/^app = "\(.*\)"/\1/p' fly.toml)
           flyctl certs show "$CUSTOM_HOST" --app "$app" >/dev/null 2>&1 || flyctl certs add "$CUSTOM_HOST" --app "$app"
           flyctl certs show "$CUSTOM_HOST" --app "$app"
+
+  # Read-only smoke test of the live site after each deploy (guest checks run
+  # when a GUEST_PHRASE repo secret is set).
+  live-check:
+    needs: deploy
+    if: ${{ always() && (needs.deploy.result == 'success' || inputs.live_only) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui-tests/package-lock.json
+      - name: Check the live site
+        working-directory: ui-tests
+        env:
+          SITE: https://hockeypool.opeongo.net
+          GUEST_PHRASE: ${{ secrets.GUEST_PHRASE }}
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          sleep 20  # let the new machine settle
+          node live-check.mjs

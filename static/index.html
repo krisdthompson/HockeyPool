@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pool Draft</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%92%3C/text%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #f6f7f9; --panel: #fff; --text: #16191d; --muted: #5d6670; --line: #dde1e6;
@@ -197,17 +198,17 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
 
     <section class="panel">
-      <h2>Recent picks <button class="small admin-only" id="undo" style="float:right">Undo last</button></h2>
+      <h2>🚨 Recent picks <button class="small admin-only" id="undo" style="float:right">Undo last</button></h2>
       <div class="picks" id="recent"></div>
     </section>
 
     <section class="panel" id="boardsec">
-      <h2>Draft board</h2>
+      <h2>📋 Draft board</h2>
       <div class="tablewrap"><table class="board" id="boardgrid"></table></div>
       <div id="boardedit"></div>
     </section>
     <details class="panel weights admin-only" id="weights">
-      <summary>Ranking weights</summary>
+      <summary>⚙️ Ranking weights</summary>
       <label title="0 = last season's actual points; 100 = points pace stretched to 82 games. Lower it to mark down players who miss games.">Trust 82-game pace % <input type="range" id="w-pace" min="0" max="100" step="5"><output></output></label>
       <label title="Blend ESPN's tier-implied points into the projection. 0 = ignore ESPN, 100 = ESPN only (for players ESPN ranks).">ESPN tier weight % <input type="range" id="w-espn" min="0" max="100" step="5"><output></output></label>
       <label>Stack bonus per teammate % <input type="range" id="w-stack" min="0" max="40" step="1"><output></output></label>
@@ -223,7 +224,7 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
 <div id="setup">
   <section class="panel">
-    <h2>Pool settings</h2>
+    <h2>🏟️ Pool settings</h2>
     <p class="muted">Pool teams <b>in draft order</b> (auction: nomination order). Use ▲▼ to move a team, then <b>Save settings</b>. Recorded buys stay with their team.</p>
     <ol id="s-mgrlist" class="mgrlist"></ol>
     <button id="s-addmgr" class="small">+ Add team</button>
@@ -548,7 +549,7 @@ function paint() {
     }
     const why = r => [r.tag === 'target' ? '★ your target' : '', r.stack ? `stacks with your ${esc(r.team)}` : '',
       r.tag === 'caution' ? 'caution' : '', r.kind || r.miss ? esc(r.injury) : '', r.rookie ? 'rookie' : ''].filter(Boolean).join(' · ');
-    $('#recs').innerHTML = `<h2>Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
+    $('#recs').innerHTML = `<h2>🥅 Best buys now${auction() ? ` <span class="muted">(you: $${money(S.me).left} left, max bid $${money(S.me).max})</span>` : ''}</h2>
       <div class="tablewrap"><table><thead><tr><th class="l">Drafted</th><th class="l">Player</th><th colspan="4"></th></tr></thead><tbody>${best.map(r => `<tr data-rid="recs-${r.id}" class="${r.tag === 'target' ? 'target' : ''}">
         <td class="l own">${ownCell(r, true, true)}</td>
         <td class="l name">${nameLink(r)} <span class="muted">${esc(r.team)} ${esc(r.pos)}</span><div class="why">${why(r)}</div></td>
@@ -558,7 +559,7 @@ function paint() {
   } else $('#recs').innerHTML = '';
 
   // My team.
-  $('#mytitle').textContent = `${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})` + (auction() ? ` · $${money(S.me).left} left` : '');
+  $('#mytitle').textContent = `🏒 ${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})` + (auction() ? ` · $${money(S.me).left} left` : '');
   $('#myteams').innerHTML = [...A.myTeams].sort((a, b) => b[1] - a[1]).map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join('')
     + (S.maxTeams ? `<span class="chip">${A.myTeams.size}/${S.maxTeams} teams</span>` : A.myTeams.size ? `<span class="chip">${A.myTeams.size} teams</span>` : '');
   $('#myroster').innerHTML = A.mine.map(p => `<li>${esc(p.name)} <span class="muted">${esc(p.team)} ${esc(p.pos)} · ${proj(p).toFixed(0)}</span></li>`).join('') || '<li class="muted">No picks yet</li>';

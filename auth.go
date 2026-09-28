@@ -209,6 +209,7 @@ func (sv *server) logout(w http.ResponseWriter, r *http.Request) {
 var loginTmpl = template.Must(template.New("login").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pool Draft sign in</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%92%3C/text%3E%3C/svg%3E">
 <style>
 :root { --bg:#f6f7f9; --panel:#fff; --text:#16191d; --muted:#5d6670; --line:#dde1e6; --accent:#0b5cad; --accent-text:#fff; --bad:#b3261e; }
 @media (prefers-color-scheme: dark) { :root { --bg:#111418; --panel:#1a1e24; --text:#e7eaee; --muted:#9aa3ad; --line:#2c323a; --accent:#5ea8f0; --accent-text:#0b1520; --bad:#f07b72; } }
