@@ -47,6 +47,7 @@ type Player struct {
 	Miss   int     `json:"miss"`   // expected games missed to injury; 0 = unknown
 	Rookie bool    `json:"rookie"`
 	Injury string  `json:"injury"` // free text: "", "DTD", "IR", "LTIR - back Dec", ...
+	Tag    string  `json:"tag"`    // "", "target", "avoid" or "caution"
 	Note   string  `json:"note"`
 }
 
@@ -66,6 +67,7 @@ type State struct {
 	Snake      bool     `json:"snake"`
 	MaxTeams   int      `json:"maxTeams"`   // 0 = no limit; soft cap on distinct NHL teams on my roster
 	Budget     int      `json:"budget"`     // 0 = snake/straight draft; >0 = auction with this much per manager
+	MinBid     int      `json:"minBid"`     // auction: smallest legal bid (0 means $1)
 	AuctionSet bool     `json:"auctionSet"` // budget was chosen in Setup; don't apply the $100 default again
 	SeedHash   string   `json:"seedHash"`   // which built-in list the players came from
 	Players    []Player `json:"players"`
@@ -90,6 +92,7 @@ func defaultState() State {
 		RosterSize: 7,
 		Snake:      true,
 		Budget:     100,
+		MinBid:     4,
 		Players:    []Player{},
 		Picks:      []Pick{},
 	}
@@ -180,6 +183,7 @@ var headerAliases = map[string]string{
 	"rookie": "rookie", "rk": "rookie", "rook": "rookie",
 	"injury": "injury", "inj": "injury", "status": "injury", "injury status": "injury",
 	"note": "note", "notes": "note", "comment": "note",
+	"tag": "tag", "flag": "tag",
 }
 
 func truthy(v string) bool {
@@ -257,6 +261,7 @@ func parsePlayers(text string) ([]Player, map[string]bool, error) {
 			Rookie: truthy(field(row, "rookie")),
 			Injury: field(row, "injury"),
 			Note:   field(row, "note"),
+			Tag:    normTag(field(row, "tag")),
 		}
 		if p.Pts == 0 {
 			p.Pts = p.G + p.A
@@ -336,6 +341,9 @@ func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added in
 		if has["injury"] {
 			p.Injury = np.Injury
 		}
+		if has["tag"] {
+			p.Tag = np.Tag
+		}
 		if has["note"] && np.Note != "" {
 			p.Note = np.Note
 		}
@@ -344,7 +352,12 @@ func mergePlayers(s *State, in []Player, has map[string]bool) (updated, added in
 	return updated, added
 }
 
-// maxBid is the most a manager can bid while keeping $1 for each other open slot.
+func minBid(s *State) int {
+	return max(1, s.MinBid)
+}
+
+// maxBid is the most a manager can bid while keeping the minimum bid for
+// each other open slot.
 func maxBid(s *State, m int) int {
 	spent, n := 0, 0
 	for _, k := range s.Picks {
@@ -353,7 +366,7 @@ func maxBid(s *State, m int) int {
 			n++
 		}
 	}
-	return s.Budget - spent - max(0, s.RosterSize-n-1)
+	return s.Budget - spent - minBid(s)*max(0, s.RosterSize-n-1)
 }
 
 type server struct {
@@ -420,6 +433,7 @@ type settingsReq struct {
 	Snake      bool     `json:"snake"`
 	MaxTeams   int      `json:"maxTeams"`
 	Budget     int      `json:"budget"`
+	MinBid     int      `json:"minBid"`
 }
 
 type importReq struct {
@@ -433,7 +447,17 @@ type pickReq struct {
 	Price    int  `json:"price"`
 }
 
+// normTag keeps only the tags the page knows how to show.
+func normTag(t string) string {
+	switch t = strings.ToLower(strings.TrimSpace(t)); t {
+	case "target", "avoid", "caution":
+		return t
+	}
+	return ""
+}
+
 type playerEditReq struct {
+	Tag    string `json:"tag"`
 	ID     int    `json:"id"`
 	Rookie bool   `json:"rookie"`
 	Injury string `json:"injury"`
@@ -487,8 +511,11 @@ func (sv *server) routes() http.Handler {
 		if req.RosterSize < 1 || req.RosterSize > 40 {
 			return errors.New("roster size must be 1-40")
 		}
-		if req.Budget < 0 {
-			return errors.New("budget can't be negative")
+		if req.Budget < 0 || req.MinBid < 0 {
+			return errors.New("budget and minimum bid can't be negative")
+		}
+		if req.Budget > 0 && max(1, req.MinBid)*req.RosterSize > req.Budget {
+			return errors.New("minimum bid × players each is more than the budget")
 		}
 		for _, p := range s.Picks {
 			if p.Manager >= len(names) {
@@ -496,6 +523,7 @@ func (sv *server) routes() http.Handler {
 			}
 		}
 		s.Managers, s.Me, s.RosterSize, s.Snake, s.MaxTeams, s.Budget = names, req.Me, req.RosterSize, req.Snake, req.MaxTeams, req.Budget
+		s.MinBid = req.MinBid
 		s.AuctionSet = true
 		return nil
 	}))
@@ -564,8 +592,8 @@ func (sv *server) routes() http.Handler {
 		price := 0
 		if s.Budget > 0 {
 			price = req.Price
-			if price < 1 {
-				return errors.New("auction: price must be at least $1")
+			if price < minBid(s) {
+				return fmt.Errorf("auction: price must be at least $%d", minBid(s))
 			}
 			if mb := maxBid(s, m); price > mb {
 				return fmt.Errorf("%s can bid at most $%d", s.Managers[m], mb)
@@ -593,6 +621,7 @@ func (sv *server) routes() http.Handler {
 			if s.Players[i].ID == req.ID {
 				p := &s.Players[i]
 				p.Rookie, p.Injury, p.Miss, p.Note = req.Rookie, strings.TrimSpace(req.Injury), req.Miss, strings.TrimSpace(req.Note)
+				p.Tag = normTag(req.Tag)
 				return nil
 			}
 		}
@@ -617,6 +646,12 @@ func main() {
 	}
 	// Bring a draft created by an earlier version up to the pool's setup
 	// (14 teams, $100 auction), as long as no picks have been made.
+	if s := st.get(); s.MinBid == 0 {
+		// The pool's minimum bid is $4; drafts saved before it existed get it.
+		if _, err := st.update(func(s *State) error { s.MinBid = 4; return nil }); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if s := st.get(); len(s.Picks) == 0 && (slices.Equal(s.Managers, placeholderTeams) || s.Budget == 0 && !s.AuctionSet) {
 		if _, err := st.update(func(s *State) error {
 			if slices.Equal(s.Managers, placeholderTeams) {

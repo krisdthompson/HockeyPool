@@ -42,6 +42,32 @@ PROJ_OVERRIDES = {
 }
 
 
+# Draft-night guidance: (tag, reason). "target" = want him, "avoid" = don't
+# pay for him, "caution" = fine at a discount, don't pay for last season.
+TAGS = {
+    "Mark Stone": ("target", "Always on my team. Missed 22 GP last season; price him for ~70 games"),
+    "Connor Bedard": ("avoid", "Shoulder: out to ~Nov 7 (~14 games)"),
+    "Troy Terry": ("avoid", "Hip: out to ~Nov 21 (~20 games)"),
+    "Yanni Gourde": ("avoid", "Hip: out to ~Dec 2 (~25 games)"),
+    "Brad Marchand": ("avoid", "Out to ~Nov 2 (~12 games), age 38"),
+    "Seth Jarvis": ("avoid", "Shoulder: out to ~Oct 24 (~8 games); fine only at a discount"),
+    "Vladimir Tarasenko": ("avoid", "Unsigned free agent"),
+    "Eeli Tolvanen": ("avoid", "Unsigned free agent"),
+    "Jonathan Drouin": ("avoid", "Unsigned free agent"),
+    "Patrik Laine": ("avoid", "Unsigned free agent"),
+    "Clayton Keller": ("caution", "88 pts last season, well above ESPN's rank: likely a peak year"),
+    "Artemi Panarin": ("caution", "84 pts, but ESPN ranks him much lower and he's in his mid-30s"),
+    "Cole Caufield": ("caution", "51 goals is hard to repeat"),
+    "Darren Raddysh": ("caution", "70 pts from D was a career year"),
+    "Mika Zibanejad": ("caution", "78 pts but not in ESPN's top 66 forwards"),
+    "Nick Schmaltz": ("caution", "74 pts but not in ESPN's top 66 forwards"),
+    "Sidney Crosby": ("caution", "Still productive, but age 39 and not in ESPN's top 66 forwards"),
+    "Evgeni Malkin": ("caution", "Age 40; his pace comes from a partial season"),
+    "Matthew Tkachuk": ("caution", "Only 31 GP last season; injury history"),
+    "Charlie McAvoy": ("caution", "Starts the season with a 6-game suspension"),
+    "Gavin McKenna": ("caution", "Rookie: don't pay for the hype"),
+}
+
 ESPN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "espn.csv")
 ESPN_TEAMS = {"SJ": "SJS", "TB": "TBL", "MON": "MTL", "LA": "LAK", "NJ": "NJD", "WAS": "WSH", "UTAH": "UTA"}
 # ESPN spelling -> organizer spelling, where first names differ.
@@ -123,7 +149,7 @@ def main(path: str):
     espn = load_espn([{"pos": r[col["POS"]], "pts": r[col["Pts"]]} for r in rows])
     matched = set()
     out = csv.writer(sys.stdout, lineterminator="\n")
-    out.writerow(["Name", "Team", "Pos", "GP", "G", "A", "Pts", "Proj", "Expert", "Miss", "Rookie", "Injury", "Note"])
+    out.writerow(["Name", "Team", "Pos", "GP", "G", "A", "Pts", "Proj", "Expert", "Miss", "Rookie", "Injury", "Tag", "Note"])
     for row in rows:
         name = row[col["PLAYER NAME"]]
         if not name or not row[col["POS"]]:
@@ -134,18 +160,30 @@ def main(path: str):
         proj = ""
         if name in PROJ_OVERRIDES:
             proj, note = PROJ_OVERRIDES[name]
-        if team == "UFA":
+        if team == "UFA" and name not in TAGS:
             note = "Unsigned free agent"
         expert, espn_notes = espn.get(name_key(name), (None, []))
         if name_key(name) in espn:
             matched.add(name_key(name))
         rookie = name in ROOKIES or "ESPN rookie to know" in espn_notes
-        note = "; ".join(x for x in [note] + espn_notes if x)
+        tag, why = TAGS.get(name, ("", ""))
+        note = "; ".join(x for x in [why, note] + espn_notes if x)
         stat = lambda k: "" if row[col[k]] is None else row[col[k]]
         out.writerow([name, team, row[col["POS"]], stat("GP"), stat("G"), stat("A"), stat("Pts"),
-                      proj, expert or "", miss or "", "Y" if rookie else "", injury, note])
-    for k in sorted(set(espn) - matched):
-        print(f"not on the organizer's list: {k}", file=sys.stderr)
+                      proj, expert or "", miss or "", "Y" if rookie else "", injury, tag, note])
+    for k in sorted(set(TAGS) - {str(r[col["PLAYER NAME"]]).strip() for r in rows}):
+        print(f"tagged but not on the list: {k}", file=sys.stderr)
+    # ESPN-ranked skaters the organizer's list leaves out are still valid picks.
+    for e in csv.DictReader(open(ESPN_FILE)) if os.path.exists(ESPN_FILE) else []:
+        k = name_key(e["Name"])
+        if k in matched or k not in espn:
+            continue
+        matched.add(k)
+        expert, espn_notes = espn[k]
+        pos = "D" if e["Pos"] == "D" else e["Pos"].split("/")[0].replace("F", "").replace("W", "") or "F"
+        out.writerow([e["Name"], ESPN_TEAMS.get(e["Team"], e["Team"]), pos, "", "", "", "", "", expert or "", "", "", "", "",
+                      "; ".join(["Not on the organizer's list"] + espn_notes)])
+        print(f"added from ESPN: {e['Name']}", file=sys.stderr)
 
 
 if __name__ == "__main__":

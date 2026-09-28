@@ -38,6 +38,17 @@ the same URL, and picks sync every 2 seconds.
   - Stacking: +10% per player you already own from that NHL team. The
     optional **Max NHL teams** discounts players who would add another team.
   - All weights are sliders, saved per browser.
+- **Auction values**: in auction mode each available player shows **Value**
+  (a fair price for you right now), **Good ≤** (85% of value: a bargain)
+  and **Max** (value +15%, or +30% for your ★ targets, capped at what you
+  can bid). Value splits the room's remaining money, beyond the minimum bid
+  for every open spot, by points above the best player who won't be
+  bought. It recalculates after every sale, and it includes your stack
+  bonus.
+- **Flags**: ★ target, ⚠ avoid and caution, with the reason in the note.
+  They're set in `players/convert.py` (TAGS) and editable per player in
+  the app.
+- **Add player**: search for a name that isn't listed, and a button adds it.
 - **Draft or auction**: set an **Auction budget** in Setup (for example
   $100) to record a price with every pick. The page then shows each team's
   money left and max bid, keeping $1 for every open slot, and rejects

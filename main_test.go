@@ -108,7 +108,7 @@ func TestAuction(t *testing.T) {
 		return w.Code
 	}
 	do("/api/import", `{"text":"Name\nA\nB\nC\nD"}`)
-	if c := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":2,"budget":10}`); c != 200 {
+	if c := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":2,"budget":10,"minBid":1}`); c != 200 {
 		t.Fatal("settings", c)
 	}
 	if c := do("/api/pick", `{"playerId":1,"price":3}`); c != 400 {
@@ -140,5 +140,29 @@ func TestSeedParses(t *testing.T) {
 		if p.Name == "Connor McDavid" && p.Expert == 0 {
 			t.Error("ESPN expert projection missing from seed")
 		}
+	}
+}
+
+func TestMinBid(t *testing.T) {
+	st, _ := openStore(t.TempDir())
+	h := (&server{st: st}).routes()
+	do := func(path, body string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		return w.Code
+	}
+	do("/api/import", `{"text":"Name\nA\nB"}`)
+	if c := do("/api/settings", `{"managers":["x","y"],"me":0,"rosterSize":7,"budget":100,"minBid":4}`); c != 200 {
+		t.Fatal("settings", c)
+	}
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":3}`); c != 400 {
+		t.Fatal("bid under the $4 minimum allowed")
+	}
+	// $100 with 6 more spots to fill at $4 each: max bid is $76.
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":77}`); c != 400 {
+		t.Fatal("bid over $76 allowed")
+	}
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":76}`); c != 200 {
+		t.Fatal("$76 rejected", c)
 	}
 }
