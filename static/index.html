@@ -120,6 +120,7 @@ dialog input[type=text], dialog input[type=number], dialog select { width: 100%;
       <label><input type="checkbox" id="ftarget"> Targets only</label>
       <label><input type="checkbox" id="frookie"> Rookies only</label>
       <label><input type="checkbox" id="fdrafted"> Show drafted</label>
+      <label title="Hide players projecting fewer points. Searching a name ignores this.">Min pts <input type="number" id="fminpts" min="0" max="150" step="5" style="width:64px"></label>
     </div>
     <div class="tablewrap">
       <table id="players">
@@ -250,6 +251,8 @@ let S = null, sortKey = 'score', sortDir = -1, editId = null;
 
 const W_DEFAULT = { espn: 50, pace: 50, stack: 10, rookie: 10, rbase: 30, dtd: 5, ir: 50, cap: 50 };
 let W = { ...W_DEFAULT };
+try { $('#fminpts').value = localStorage.getItem('pool-minpts') ?? 40; } catch { $('#fminpts').value = 40; }
+$('#fminpts').addEventListener('input', () => { try { localStorage.setItem('pool-minpts', $('#fminpts').value); } catch {} });
 try { Object.assign(W, JSON.parse(localStorage.getItem('pool-weights') || '{}')); } catch {}
 
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
@@ -401,6 +404,7 @@ function render() {
       if (fpos === 'F' ? !/C|LW|RW|F|W/.test(pos) : !pos.split(/[\/, ]+/).includes(fpos)) return false;
     }
     if (fteam && r.team !== fteam) return false;
+    if (!q && r.projv < (+$('#fminpts').value || 0)) return false;
     if ($('#fmyteams').checked && !A.myTeams.has(r.team)) return false;
     if ($('#fhealthy').checked && (r.kind || r.miss > 0)) return false;
     if ($('#frookie').checked && !r.rookie) return false;
@@ -534,7 +538,7 @@ $('#board').addEventListener('click', async e => {
     }
   } catch (err) { toast(err.message); }
 });
-['#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fdrafted'].forEach(s => $(s).addEventListener('input', render));
+['#fminpts', '#q', '#fpos', '#fteam', '#fmyteams', '#fhealthy', '#fnoavoid', '#ftarget', '#frookie', '#fdrafted'].forEach(s => $(s).addEventListener('input', render));
 $('#addplayer').onclick = async () => {
   const name = $('#q').value.trim();
   const team = (prompt(`NHL team for ${name} (e.g. CBJ)`) || '').trim();

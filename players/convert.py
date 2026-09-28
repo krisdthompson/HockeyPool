@@ -25,6 +25,7 @@ import openpyxl
 
 SEASON_START = dt.date(2026, 10, 7)
 SEASON_DAYS = 186
+MIN_POINTS = 40  # ESPN-only players projecting below this aren't worth listing
 
 # Under 25 NHL games last season and (to my knowledge) still rookie-eligible.
 ROOKIES = {
@@ -173,13 +174,17 @@ def main(path: str):
                       proj, expert or "", miss or "", "Y" if rookie else "", injury, tag, note])
     for k in sorted(set(TAGS) - {str(r[col["PLAYER NAME"]]).strip() for r in rows}):
         print(f"tagged but not on the list: {k}", file=sys.stderr)
-    # ESPN-ranked skaters the organizer's list leaves out are still valid picks.
+    # ESPN-ranked skaters the organizer's list leaves out are still valid
+    # picks, but a points-only pool has no use for low scorers.
     for e in csv.DictReader(open(ESPN_FILE)) if os.path.exists(ESPN_FILE) else []:
         k = name_key(e["Name"])
         if k in matched or k not in espn:
             continue
         matched.add(k)
         expert, espn_notes = espn[k]
+        if (expert or 0) < MIN_POINTS:
+            print(f"skipped from ESPN (projects under {MIN_POINTS}): {e['Name']}", file=sys.stderr)
+            continue
         pos = "D" if e["Pos"] == "D" else e["Pos"].split("/")[0].replace("F", "").replace("W", "") or "F"
         out.writerow([e["Name"], ESPN_TEAMS.get(e["Team"], e["Team"]), pos, "", "", "", "", "", expert or "", "", "", "", "",
                       "; ".join(["Not on the organizer's list"] + espn_notes)])
