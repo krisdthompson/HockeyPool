@@ -229,6 +229,15 @@ func initScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^they sign out$`, func() { w.do("POST", "/logout", "", url.Values{}) })
 
 	// Privacy.
+	sc.Step(`^Kris saves the plan "([^"]*)"$`, func(plan string) error {
+		if err := expectOK(w.post("/api/plan", map[string]any{"plan": plan})); err != nil {
+			return err
+		}
+		if !strings.Contains(w.last.Body.String(), plan) {
+			return fmt.Errorf("plan not returned to kris")
+		}
+		return nil
+	})
 	sc.Step(`^they load the draft$`, func() error { return expectOK(w.do("GET", "/api/state", "", nil)) })
 	sc.Step(`^the response does not contain "([^"]*)"$`, func(text string) error {
 		if strings.Contains(w.last.Body.String(), text) {

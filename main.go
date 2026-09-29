@@ -77,6 +77,7 @@ type State struct {
 
 	Prefs map[string]Prefs `json:"prefs,omitempty"` // per-user team choice and flags
 	You   *user            `json:"you,omitempty"`   // only in responses: who is asking
+	Plan  string           `json:"plan,omitempty"`  // only in responses: the asker's own plan
 }
 
 type store struct {
@@ -582,7 +583,7 @@ func (sv *server) routes() http.Handler {
 		}
 		v := s.Version
 		*s = req
-		s.Version, s.You = v, nil
+		s.Version, s.You, s.Plan = v, nil, ""
 		return nil
 	}))
 
@@ -756,6 +757,13 @@ func (sv *server) routes() http.Handler {
 			}
 		}
 		return errors.New("player isn't drafted")
+	}))
+
+	mux.HandleFunc("POST /api/plan", mutate(sv, func(s *State, req struct {
+		Plan string `json:"plan"`
+	}, u user) error {
+		setPrefs(s, u, func(p *Prefs) { p.Plan = req.Plan })
+		return nil
 	}))
 
 	mux.HandleFunc("POST /api/undo", mutate(sv, func(s *State, _ struct{}, _ user) error {

@@ -120,6 +120,8 @@ td.own .pend input { width: 64px; height: auto; }
 button.danger { color: var(--bad); }
 .addform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
 .addform[hidden] { display: none; }
+details#plan > summary { cursor: pointer; font-weight: 700; font-size: 15px; }
+#plantext { white-space: pre-wrap; font-size: 15px; line-height: 1.5; margin-top: 8px; }
 details.weights > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 details.weights[open] > summary { margin-bottom: 8px; }
 header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
@@ -147,6 +149,15 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 </header>
 
 <main id="board">
+  <details class="panel admin-only" id="plan" open>
+    <summary>📝 My plan</summary>
+    <div id="plantext"></div>
+    <p class="edline"><button class="small" id="planedit" aria-controls="planbox" aria-expanded="false">Edit plan</button></p>
+    <div id="planbox" hidden>
+      <textarea id="planarea" rows="10" style="width:100%;font:inherit"></textarea>
+      <p><span class="muted">Saves when you click away.</span> <button class="small" id="plandone">Done</button></p>
+    </div>
+  </details>
   <section class="panel">
     <div id="recs" class="admin-only"></div>
     <div class="searchbar">
@@ -566,6 +577,9 @@ function paint() {
         </tr>${undraftRow(r, 6)}${pendingRow(r, 6, 'recs')}${editorRow(r, 6, 'recs')}`).join('')}</tbody></table></div>`;
   } else $('#recs').innerHTML = '';
 
+  // My plan (the admin's own notes).
+  if ($('#planbox').hidden) $('#plantext').textContent = S.plan || 'No plan yet. Press Edit plan to write one.';
+
   // My team.
   $('#mytitle').textContent = `🏒 ${S.managers[S.me]} (${A.mine.length}/${S.rosterSize})` + (auction() ? ` · $${money(S.me).left} left` : '');
   $('#myteams').innerHTML = [...A.myTeams].sort((a, b) => b[1] - a[1]).map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join('')
@@ -845,6 +859,12 @@ for (const k of Object.keys(W_DEFAULT)) {
     render();
   });
 }
+
+// My plan: edit in place, save on blur.
+const planOpen = open => { $('#planbox').hidden = !open; $('#planedit').setAttribute('aria-expanded', String(open)); if (open) { $('#planarea').value = S.plan || ''; $('#planarea').focus(); } };
+$('#planedit').onclick = () => planOpen($('#planbox').hidden);
+$('#plandone').onclick = () => planOpen(false);
+$('#planarea').addEventListener('change', async () => { try { await api('plan', { plan: $('#planarea').value }); toast('Plan saved'); } catch (e) { toast(e.message); } });
 
 // Tabs.
 function tab(name) {

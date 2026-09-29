@@ -25,3 +25,10 @@ Feature: Guests browse but only Kris gets recommendations
     Given a guest named "toad" is signed in
     When they mark "Connor Test" as drafted
     Then the request is refused as not allowed
+
+  Scenario: Kris's plan is private
+    Given "kris" is signed in
+    When Kris saves the plan "get Stone for $17"
+    And a guest named "toad" is signed in
+    And they load the draft
+    Then the response does not contain "get Stone"

@@ -43,6 +43,7 @@ func userOf(r *http.Request) user {
 type Prefs struct {
 	Me   int            `json:"me"`   // their pool team, -1 = not chosen
 	Tags map[int]string `json:"tags"` // player ID -> tag; for the admin, overrides the list's tag
+	Plan string         `json:"plan"` // the admin's own draft-night notes
 }
 
 const hashIters = 200_000
@@ -304,6 +305,7 @@ func view(s State, u user) State {
 	v.Prefs = nil
 	v.Me = p.Me
 	v.You = &u
+	v.Plan = p.Plan
 	v.Players = make([]Player, len(s.Players))
 	for i, pl := range s.Players {
 		t, set := p.Tags[pl.ID]
