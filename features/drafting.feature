@@ -34,9 +34,16 @@ Feature: Tracking the auction
     When Kris records "Jack Eichel" as bought by "Toad" for $3
     Then the request is refused with "at least $4"
 
-  Scenario: Bids above what a team can afford are refused
-    When Kris records "Jack Eichel" as bought by "Toad" for $77
-    Then the request is refused with "at most $76"
+  Scenario: Overbids beyond the advised max are still recorded
+    Given Kris recorded "Mark Stone" as bought by "Toad" for $60
+    When Kris records "Jack Eichel" as bought by "Toad" for $26
+    Then "Jack Eichel" is drafted by "Toad" for $26
+    And "Toad" has $14 left
+
+  Scenario: Bids above a team's remaining money are refused
+    Given Kris recorded "Mark Stone" as bought by "Toad" for $60
+    When Kris records "Jack Eichel" as bought by "Toad" for $41
+    Then the request is refused with "only has $40 left"
 
   Scenario: Unticking puts a player back
     Given Kris marked "Mark Stone" as drafted

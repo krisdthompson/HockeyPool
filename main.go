@@ -420,8 +420,17 @@ func checkBuy(s *State, m, price int) (int, error) {
 	if price < minBid(s) {
 		return 0, fmt.Errorf("auction: price must be at least $%d", minBid(s))
 	}
-	if mb := maxBid(s, m); price > mb {
-		return 0, fmt.Errorf("%s can bid at most $%d", s.Managers[m], mb)
+	// Record what was actually paid. The only hard limit is the money a team
+	// has left; holding back the minimum for open spots is advice (Max), not
+	// a rule, because rooms don't always enforce it.
+	left := s.Budget
+	for _, k := range s.Picks {
+		if k.Manager == m {
+			left -= k.Price
+		}
+	}
+	if price > left {
+		return 0, fmt.Errorf("%s only has $%d left", s.Managers[m], left)
 	}
 	return price, nil
 }

@@ -332,7 +332,7 @@ function money(m) {
   const mine = S.picks.filter(k => k.manager === m);
   const spent = mine.reduce((t, k) => t + (k.price || 0), 0);
   const left = S.budget - spent;
-  return { spent, left, n: mine.length, max: mine.length >= S.rosterSize ? 0 : left - minBid() * Math.max(0, S.rosterSize - mine.length - 1) };
+  return { spent, left, n: mine.length, max: mine.length >= S.rosterSize ? 0 : Math.max(0, left - minBid() * Math.max(0, S.rosterSize - mine.length - 1)) };
 }
 
 function picksUntilMe() {

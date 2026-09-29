@@ -114,11 +114,11 @@ func TestAuction(t *testing.T) {
 	if c := do("/api/pick", `{"playerId":1,"price":3}`); c != 400 {
 		t.Fatal("auction pick without manager allowed")
 	}
-	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":10}`); c != 400 {
-		t.Fatal("bid over max allowed (must keep $1 for last slot)")
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":11}`); c != 400 {
+		t.Fatal("bid over the whole budget allowed")
 	}
 	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":9}`); c != 200 {
-		t.Fatal("max bid rejected", c)
+		t.Fatal("bid rejected", c)
 	}
 	if c := do("/api/pick", `{"playerId":2,"manager":0,"price":2}`); c != 400 {
 		t.Fatal("overspend allowed")
@@ -158,12 +158,12 @@ func TestMinBid(t *testing.T) {
 	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":3}`); c != 400 {
 		t.Fatal("bid under the $4 minimum allowed")
 	}
-	// $100 with 6 more spots to fill at $4 each: max bid is $76.
-	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":77}`); c != 400 {
-		t.Fatal("bid over $76 allowed")
+	// Max bid ($76 here) is advice; only the whole budget is a hard limit.
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":101}`); c != 400 {
+		t.Fatal("bid over $100 allowed")
 	}
-	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":76}`); c != 200 {
-		t.Fatal("$76 rejected", c)
+	if c := do("/api/pick", `{"playerId":1,"manager":0,"price":86}`); c != 200 {
+		t.Fatal("$86 overbid rejected", c)
 	}
 }
 
