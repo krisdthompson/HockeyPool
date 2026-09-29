@@ -1,0 +1,75 @@
+entries:
+- slug: skill-hockeypool-bootstrap-fly-app-from-nothing
+  title: 'HOCKEYPOOL bootstrap: bring the draft site back on fly.io from nothing (the app is deleted between seasons)'
+  domain: lore
+  lore_type: skill
+  app_scope: hockeypool
+  lair: tools
+  character_slug: domino
+  tags:
+  - hockeypool
+  - fly
+  - deploy
+  - bootstrap
+  - teardown
+  - runbook
+  status: canonical
+  description: |
+    The HockeyPool draft site (krisdthompson/HockeyPool) is a single Go
+    binary on one fly.io machine with a 1 GB volume (draft_data -> /data),
+    served at https://hockeypool.opeongo.net (DNS CNAME ->
+    hockeypool-draft.fly.dev, kept in place between seasons). After the
+    2026-27 regular-season draft the whole fly app was destroyed (machine,
+    volume, backups, certificate) by the "Tear down fly.io app" workflow.
+    The final draft lives in the repo: drafts/2026-27-regular-season.md
+    (readable) and .json (Setup -> Restore backup).
+
+    Pushes to main only run tests (go test + godog API scenarios + the
+    cucumber-js/Playwright @ui suite at 375/768/1280 px). Deploys are
+    manual so a push can never resurrect a torn-down app.
+
+    BOOTSTRAP, path A (no local tools): GitHub -> Actions -> "Deploy to
+    fly.io" -> Run workflow. It runs the tests, creates the app and volume
+    if missing, deploys, adds the TLS cert for hockeypool.opeongo.net, then
+    runs the read-only live check. Needs the FLY_API_TOKEN repo secret
+    (`fly tokens create org`; regenerate it if the old one expired).
+
+    BOOTSTRAP, path B (CLI on the Mac, from the repo root):
+
+        brew install flyctl
+        fly auth login
+        cd HockeyPool
+        fly apps create hockeypool-draft
+        fly volumes create draft_data --region dfw --size 1 --yes
+        fly deploy
+        fly certs add hockeypool.opeongo.net
+
+    First boot seeds the organizer's player list (players/players.csv,
+    embedded), 14 pool teams, $100 auction, $4 minimum. Then in Setup: fix
+    the pool teams and draft order, set I am (Kris is Longarm), roster
+    size, budget and minimum; optionally Restore backup from drafts/.
+
+    TEARDOWN: Actions -> "Tear down fly.io app" -> Run workflow, typing the
+    app name (hockeypool-draft) to confirm; or `fly apps destroy
+    hockeypool-draft --yes`. Save the draft first (Setup -> Download backup,
+    or GET /api/export) -- the volume and its backups are deleted.
+  dont: |
+    Don't re-enable deploy-on-push while the app is meant to stay deleted.
+    Don't delete the DNS CNAME for hockeypool.opeongo.net between seasons --
+    the deploy re-adds the fly certificate for it. Don't commit plaintext
+    passwords; fly.toml carries only PBKDF2 hashes. Don't tear down without
+    exporting the draft first.
+  do_this: |
+    Before the next draft: new organizer sheet into players/, run
+    `python3 players/convert.py players/<sheet>.xlsx > players/players.csv`,
+    rotate the admin password and guest phrase (`go run . hash <new>` ->
+    DRAFT_ADMIN_HASH / DRAFT_GUEST_HASH in fly.toml; the 2026-27 ones were
+    shared in chat), then bootstrap with path A or B above. Work the
+    README "Next draft" to-do list first (always-visible max bid is #1).
+  do_also: |
+    Verify after bootstrap: https://hockeypool.opeongo.net/healthz returns
+    ok, / redirects to /login, and the live-check job in the Deploy
+    workflow is green. Add a GUEST_PHRASE repo secret so the live check
+    also signs in as a guest. Between drafts inside one season, prefer
+    `fly scale count 0` / `fly scale count 1` (keeps the volume) over a
+    teardown.

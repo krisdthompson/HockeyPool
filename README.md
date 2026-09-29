@@ -166,6 +166,12 @@ Or push to GitHub: `.github/workflows/fly-deploy.yml` deploys on every push to
 It creates the app and volume on the first run. Run the `fly secrets set`
 line yourself once.
 
+## Lore
+
+`lore/` holds HockeyPool's TARGET_LORE in the about-lore entry format.
+`lore/domino/skill-hockeypool-bootstrap-fly-app-from-nothing.yaml` is the
+runbook for bringing the site back on fly.io (and tearing it down).
+
 ## Next draft (playoff pool / 2027-28): to do
 
 1. **Keep my Max bid in view at all times.** Add a sticky bar (always
