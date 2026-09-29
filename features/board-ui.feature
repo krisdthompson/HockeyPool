@@ -30,8 +30,7 @@ Feature: The draft board page
     Then the owner is saved without pressing a save button
     When Kris enters an amount of $58
     Then the amount is saved without pressing a save button
-    When Kris presses Dismiss
-    Then the details row closes
+    And the details row closes by itself
     And the player leaves the list because drafted players are hidden
 
   Scenario: Ticking doesn't move anything above the details
@@ -69,6 +68,7 @@ Feature: The draft board page
     Then the details row opens below him showing "Sniffer" and $58
     When Kris changes the owner to "Toad"
     Then the change is saved automatically
+    And the details row closes by itself
 
   Scenario: Editing a drafted player from the draft board
     Given "Connor McDavid" was drafted by "Sniffer" for $58
@@ -76,6 +76,7 @@ Feature: The draft board page
     Then the details open under the draft board showing "Sniffer" and $58
     When Kris changes the amount to $60
     Then the change is saved automatically
+    And the details row closes by itself
 
   Scenario: Undrafting by unticking asks first
     Given "Connor McDavid" is drafted
@@ -156,3 +157,13 @@ Feature: The draft board page
     When Kris ticks Drafted on the top 5 players in the list one after another, choosing an owner for each
     Then all 5 are drafted with the owners chosen
     And the page shows no errors
+
+  Scenario: The draft board button opens and closes the board over the page
+    Given "Connor McDavid" was drafted by "Sniffer" for $58
+    When Kris presses the "Draft board" button
+    Then the draft board covers the page and shows "McDavid" under "Sniffer"
+    When Kris presses the button again
+    Then the draft board is closed
+    When Kris presses the "Draft board" button
+    And Kris presses Escape
+    Then the draft board is closed

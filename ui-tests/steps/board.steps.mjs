@@ -96,7 +96,7 @@ When('Kris saves an owner and an amount', async function () {
   await wait(300);
   await p.locator('[data-pf=price]').fill('20'); await p.locator('[data-pf=price]').press('Enter');
 });
-Then(/^the details (?:row )?close(?:s)?(?: without asking)?$/, async function () {
+Then(/^the details (?:row )?close(?:s)?(?: without asking| by itself)?$/, async function () {
   await eventually(async () => !(await this.page.locator(`[data-pd="${this.bag.id}"]`).count()), 'the details to close');
   assert.equal(await this.page.locator(`[data-ud="${this.bag.id}"]`).count(), 0, 'no undraft question');
 });
@@ -368,4 +368,24 @@ Then(/^all (\d+) are drafted with the owners chosen$/, async function (n) {
 });
 Then('the page shows no errors', async function () {
   assert.deepEqual(this.errors, []);
+});
+
+When('Kris presses the "Draft board" button', async function () { await this.page.click('#boardbtn'); });
+When('Kris presses the button again', async function () { await this.page.click('#boardbtn'); });
+When('Kris presses Escape', async function () { await this.page.keyboard.press('Escape'); });
+Then(/^the draft board covers the page and shows "([^"]*)" under "([^"]*)"$/, async function (last, team) {
+  assert.ok(await this.page.isVisible('#boardover'));
+  const box = await this.page.locator('#boardover').boundingBox();
+  const vp = this.page.viewportSize();
+  assert.ok(box.width >= vp.width - 1 && box.height >= vp.height - 1, 'covers the viewport');
+  assert.equal(await this.page.getAttribute('#boardbtn', 'aria-expanded'), 'true');
+  assert.ok(await this.page.locator('#boardbtn').isVisible(), 'close button stays reachable');
+  const col = await this.page.evaluate(t => [...document.querySelectorAll('#boardgrid2 tr:first-child th')].findIndex(th => th.textContent.trim() === t), team);
+  assert.ok(col > 0, `${team} column`);
+  const cells = await this.page.evaluate(c => [...document.querySelectorAll('#boardgrid2 tr')].map(r => r.children[c]?.textContent || ''), col);
+  assert.ok(cells.some(t => t.includes(last)), cells.join('|'));
+});
+Then('the draft board is closed', async function () {
+  assert.equal(await this.page.isVisible('#boardover'), false);
+  assert.equal(await this.page.getAttribute('#boardbtn', 'aria-expanded'), 'false');
 });

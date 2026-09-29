@@ -123,6 +123,12 @@ button.danger { color: var(--bad); }
 details.weights > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 details.weights[open] > summary { margin-bottom: 8px; }
 header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
+#boardbtn { position: fixed; right: 16px; bottom: 16px; z-index: 30; padding: 10px 14px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-text); border-color: var(--accent); box-shadow: 0 2px 8px #0004; font-weight: 600; }
+#boardbtn[aria-expanded=true] { background: var(--text); color: var(--bg); border-color: var(--text); }
+#boardover { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow: auto; padding: 16px 16px 80px; }
+#boardover[hidden] { display: none; }
+#boardover .board { font-size: 13px; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: .95; }
 @media (max-width: 640px) { .hide-sm { display: none; } }
@@ -271,6 +277,8 @@ header a.signout { color: var(--muted); font-size: 12px; margin-left: 6px; }
 </div>
 
 
+<button id="boardbtn" aria-controls="boardover" aria-expanded="false" title="Show the draft board (Esc closes)">📋 Draft board</button>
+<div id="boardover" hidden><div class="panel"><h2>📋 Draft board</h2><div class="tablewrap"><table class="board" id="boardgrid2"></table></div></div></div>
 <div id="toast"></div>
 
 <script>
@@ -589,6 +597,8 @@ function paint() {
     }).join('') + '</tr>';
   }
   $('#boardgrid').innerHTML = html;
+  // The overlay copy is read-only (edits happen on the page).
+  $('#boardgrid2').innerHTML = html.replace(/<a data-pencil="\d+"[^>]*>(.*?) ✎<\/a>/g, '$1');
 
   renderSetup();
 }
@@ -796,6 +806,12 @@ $('#board').addEventListener('change', async e => {
   try {
     await api('repick', { playerId: id, manager: pd.mgr === '' ? -1 : +pd.mgr, price: +pd.price || 0 });
     pd.saved = true;
+    // Owner and amount both in: done, close the details.
+    if (pd.mgr !== '' && (!auction() || pd.price !== '')) {
+      pending.delete(id);
+      toast(`Saved: ${S.managers[+pd.mgr]}${auction() ? ' $' + pd.price : ''}`);
+      focusNext = null; render(); return;
+    }
   } catch (err) { pd.saved = false; toast(err.message); }
   focusNext = next; render();
 });
@@ -892,6 +908,9 @@ $('#setup').addEventListener('click', async e => {
 });
 $('#s-restore').onchange = e => { if (e.target.files[0]) setConfirm('c-restore', true); };
 
+const showBoard = open => { $('#boardover').hidden = !open; $('#boardbtn').setAttribute('aria-expanded', String(open)); $('#boardbtn').textContent = open ? '✕ Close board' : '📋 Draft board'; };
+$('#boardbtn').onclick = () => showBoard($('#boardover').hidden);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#boardover').hidden) showBoard(false); });
 document.addEventListener('keydown', e => {
   if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); tab('board'); $('#q').focus(); }
 });
