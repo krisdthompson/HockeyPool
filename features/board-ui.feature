@@ -167,3 +167,9 @@ Feature: The draft board page
     When Kris presses the "Draft board" button
     And Kris presses Escape
     Then the draft board is closed
+
+  Scenario: Only one panel per player, and bid numbers stay visible
+    When Kris clicks "Connor McDavid"
+    And Kris ticks Drafted on "Connor McDavid"
+    Then only the drafted details are open under his row
+    And his Value, Good and Max are still shown

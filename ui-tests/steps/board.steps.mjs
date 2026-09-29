@@ -389,3 +389,13 @@ Then('the draft board is closed', async function () {
   assert.equal(await this.page.isVisible('#boardover'), false);
   assert.equal(await this.page.getAttribute('#boardbtn', 'aria-expanded'), 'false');
 });
+
+Then('only the drafted details are open under his row', async function () {
+  assert.equal(await this.page.locator(`[data-ed="${this.bag.id}"]`).count(), 0, 'name editor closed');
+  assert.equal(await this.page.locator(`[data-pd="${this.bag.id}"]`).count(), 1, 'one drafted-details panel');
+});
+Then('his Value, Good and Max are still shown', async function () {
+  const cells = await listRow(this, this.bag.id).locator('td.auc').allTextContents();
+  const visible = await listRow(this, this.bag.id).locator('td.auc:visible').allTextContents();
+  assert.ok(visible.length >= 2 && visible.every(t => /^\$\d+$/.test(t.trim())), cells.join('|'));
+});
