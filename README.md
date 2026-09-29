@@ -165,3 +165,28 @@ Or push to GitHub: `.github/workflows/fly-deploy.yml` deploys on every push to
 `main` once the repo has a `FLY_API_TOKEN` secret (`fly tokens create org`).
 It creates the app and volume on the first run. Run the `fly secrets set`
 line yourself once.
+
+## Next draft (playoff pool / 2027-28): to do
+
+1. **Keep my Max bid in view at all times.** Add a sticky bar (always
+   visible, on phones too) showing money left, open spots, and the
+   **max bid that still fills the roster at the minimum**. When an amount
+   I enter would leave less than the minimum for my open spots, warn
+   inline before it saves (2026-27: an $8 O'Reilly bid left $11 for 3
+   spots at $4, and the team finished with 7 of 8).
+2. Check the roster size in Setup before the draft starts (it changed
+   from 7 to 8 mid-draft) and confirm the minimum-bid rule with the
+   organizer.
+3. Change the admin password and guest phrase (both were shared in chat):
+   `go run . hash <new>` and update `fly.toml`.
+4. Server-render the board page to fully match the SCOUT UI standard.
+5. Refresh the player list: new organizer sheet into `players/`, run
+   `players/convert.py`, and re-check the rookie flags and injury dates.
+6. Add a `GUEST_PHRASE` repo secret so the post-deploy live check also
+   signs in as a guest.
+
+The 2026-27 auction result is saved in `drafts/2026-27-regular-season.md`
+(and the full state in `.json`; restore it with Setup → Restore backup).
+
+Between drafts, stop the fly machine to save money: `fly scale count 0`
+(`fly scale count 1` brings it back; the volume keeps the data).
