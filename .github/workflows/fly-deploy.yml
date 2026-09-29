@@ -1,6 +1,7 @@
-# Tests, then deploys to fly.io on every push to main. Needs a FLY_API_TOKEN
-# repo secret (`fly tokens create org`). Creates the app and its volume on
-# first run.
+# Tests on every push and pull request. Deploys to fly.io only when run by
+# hand (Actions -> Deploy to fly.io -> Run workflow), so a push can't bring
+# a torn-down app back by accident. Needs a FLY_API_TOKEN repo secret
+# (`fly tokens create org`). Creates the app and its volume on first run.
 name: Deploy to fly.io
 on:
   push:
@@ -40,7 +41,7 @@ jobs:
 
   deploy:
     needs: test
-    if: ${{ github.event_name != 'pull_request' && !inputs.live_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.live_only }}
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

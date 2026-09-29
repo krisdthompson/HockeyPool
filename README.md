@@ -129,8 +129,8 @@ expanded panel collapses again.
       cd ui-tests && npm ci && npx playwright install chromium && npm test
       WIDTHS=375 npm test    # one width only
 
-GitHub Actions runs both suites on every push and pull request, and
-deploys only when they pass.
+GitHub Actions runs both suites on every push and pull request. Deploys
+are manual (Run workflow) and only go out when the suites pass.
 
 ## Backups
 
@@ -188,5 +188,8 @@ line yourself once.
 The 2026-27 auction result is saved in `drafts/2026-27-regular-season.md`
 (and the full state in `.json`; restore it with Setup → Restore backup).
 
-Between drafts, stop the fly machine to save money: `fly scale count 0`
-(`fly scale count 1` brings it back; the volume keeps the data).
+After the 2026-27 draft the fly.io app was deleted (the "Tear down fly.io
+app" workflow). To bring the site back: Actions -> **Deploy to fly.io** ->
+Run workflow. It recreates the app, the volume and the certificate for
+hockeypool.opeongo.net (the DNS CNAME to hockeypool-draft.fly.dev is still
+in place). Pushes to main only run the tests; deploys are manual.

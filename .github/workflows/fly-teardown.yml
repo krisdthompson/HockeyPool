@@ -1,0 +1,30 @@
+# Deletes the fly.io app, its machine, volume and certificate. Run by hand:
+# Actions -> Tear down fly.io app -> Run workflow, typing the app name.
+# The draft data on the volume is lost; save it first (see drafts/).
+# Bring it back later with the "Deploy to fly.io" workflow.
+name: Tear down fly.io app
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type the app name (from fly.toml) to confirm deletion
+        required: true
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Destroy the app
+        run: |
+          app=$(sed -n 's/^app = "\(.*\)"/\1/p' fly.toml)
+          if [ "${{ inputs.confirm }}" != "$app" ]; then
+            echo "Confirmation '${{ inputs.confirm }}' does not match app '$app'; nothing deleted." >&2
+            exit 1
+          fi
+          flyctl status --app "$app" || { echo "App $app does not exist; nothing to do."; exit 0; }
+          flyctl apps destroy "$app" --yes
+          echo "Deleted $app."
